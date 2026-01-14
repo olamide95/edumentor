@@ -50,16 +50,7 @@ import {
   Users2,
   PieChart,
   LineChart,
-  FileEdit,
-  Upload,
-  ChevronRight,
-  ChevronLeft,
-  BookCheck,
-  School,
-  TargetIcon,
-  Brain,
-  Zap,
-  Lightbulb
+  FileEdit
 } from "lucide-react"
 import Link from "next/link"
 import Image from "next/image"
@@ -69,9 +60,7 @@ import {
   getTutorBookings,
   getMonthlyEarnings,
   getTutorPerformance,
-  getActiveStudents,
-  getStudentStats,
-  getUserBookings
+  getActiveStudents
 } from "@/lib/firebase/dashboard"
 import { format } from "date-fns"
 import { toast } from "react-hot-toast"
@@ -86,7 +75,7 @@ function Badge({ variant, className, children, style }: any) {
 }
 
 // Main Dashboard Component
-export default function DashboardPage() {
+export default function TutorDashboardPage() {
   const { user, userData, logout } = useAuth();
   const [stats, setStats] = useState<any>(null);
   const [bookings, setBookings] = useState<any[]>([]);
@@ -97,7 +86,7 @@ export default function DashboardPage() {
   const [sidebarOpen, setSidebarOpen] = useState(false);
   
   // Navigation state
-  const [activeTab, setActiveTab] = useState<'overview' | 'bookings' | 'tutors' | 'students' | 'earnings' | 'payments' | 'schedule' | 'resources' | 'performance' | 'support' | 'messages' | 'profile'>('overview');
+  const [activeTab, setActiveTab] = useState<'overview' | 'bookings' | 'students' | 'earnings' | 'schedule' | 'resources' | 'performance' | 'support'>('overview');
   
   // Mock data for other sections
   const [availability, setAvailability] = useState([
@@ -130,46 +119,31 @@ export default function DashboardPage() {
     { student: 'Sarah Johnson', message: 'Thank you for the great lesson!', time: '1 day ago', unread: false },
     { student: 'Michael Chen', message: 'I have a question about the homework', time: '2 days ago', unread: true }
   ]);
-  
-  const [myTutors] = useState([
-    { name: 'Dr. Sarah Johnson', subject: 'Physics & Mathematics', rating: 4.9, sessions: 12, status: 'active' },
-    { name: 'Mr. David Chen', subject: 'Chemistry & Biology', rating: 4.7, sessions: 8, status: 'active' },
-    { name: 'Prof. Michael Brown', subject: 'English Literature', rating: 4.8, sessions: 5, status: 'active' }
-  ]);
 
   useEffect(() => {
     if (user && userData) {
-      loadDashboardData();
+      loadTutorDashboardData();
     }
   }, [user, userData]);
 
-  const loadDashboardData = async () => {
+  const loadTutorDashboardData = async () => {
     setLoading(true);
     try {
-      if (userData.role === 'tutor') {
-        const [tutorStatsData, tutorBookings, earnings, performanceData, students] = await Promise.all([
-          getTutorStats(user.uid),
-          getTutorBookings(user.uid),
-          getMonthlyEarnings(user.uid),
-          getTutorPerformance(user.uid),
-          getActiveStudents(user.uid)
-        ]);
-        
-        setStats(tutorStatsData);
-        setBookings(tutorBookings);
-        setMonthlyEarnings(earnings);
-        setPerformance(performanceData);
-        setActiveStudents(students);
-      } else {
-        const [studentStatsData, studentBookings] = await Promise.all([
-          getStudentStats(user.uid),
-          getUserBookings(user.uid, 'student')
-        ]);
-        setStats(studentStatsData);
-        setBookings(studentBookings);
-      }
+      const [tutorStatsData, tutorBookings, earnings, performanceData, students] = await Promise.all([
+        getTutorStats(user.uid),
+        getTutorBookings(user.uid),
+        getMonthlyEarnings(user.uid),
+        getTutorPerformance(user.uid),
+        getActiveStudents(user.uid)
+      ]);
+      
+      setStats(tutorStatsData);
+      setBookings(tutorBookings);
+      setMonthlyEarnings(earnings);
+      setPerformance(performanceData);
+      setActiveStudents(students);
     } catch (error) {
-      console.error("Error loading dashboard data:", error);
+      console.error("Error loading tutor dashboard data:", error);
       toast.error("Failed to load dashboard data");
     } finally {
       setLoading(false);
@@ -181,79 +155,31 @@ export default function DashboardPage() {
     window.location.href = '/';
   };
 
-  // Helper function to safely format dates
-  const safeFormatDate = (dateString: string, timeString?: string) => {
-    try {
-      const date = new Date(dateString);
-      if (isNaN(date.getTime())) {
-        return timeString ? `Invalid date at ${timeString}` : 'Invalid date';
-      }
-      const formattedDate = format(date, 'MMM d, yyyy');
-      return timeString ? `${formattedDate} at ${timeString}` : formattedDate;
-    } catch (error) {
-      console.error('Error formatting date:', error);
-      return timeString ? `Date error at ${timeString}` : 'Date error';
-    }
-  };
-
-  // Render content based on active tab and user role
+  // Render content based on active tab
   const renderContent = () => {
-    if (userData.role === 'tutor') {
-      return renderTutorContent();
-    } else {
-      return renderStudentContent();
-    }
-  };
-
-  const renderTutorContent = () => {
     switch (activeTab) {
       case 'overview':
-        return renderTutorOverview();
+        return renderOverview();
       case 'bookings':
-        return renderTutorBookings();
+        return renderBookings();
       case 'students':
-        return renderTutorStudents();
+        return renderStudents();
       case 'earnings':
-        return renderTutorEarnings();
+        return renderEarnings();
       case 'schedule':
-        return renderTutorSchedule();
+        return renderSchedule();
       case 'resources':
-        return renderTutorResources();
+        return renderResources();
       case 'performance':
-        return renderTutorPerformance();
-      case 'messages':
-        return renderMessages();
-      case 'profile':
-        return renderProfile();
+        return renderPerformance();
       case 'support':
         return renderSupport();
       default:
-        return renderTutorOverview();
+        return renderOverview();
     }
   };
 
-  const renderStudentContent = () => {
-    switch (activeTab) {
-      case 'overview':
-        return renderStudentOverview();
-      case 'bookings':
-        return renderStudentBookings();
-      case 'tutors':
-        return renderStudentTutors();
-      case 'payments':
-        return renderStudentPayments();
-      case 'messages':
-        return renderMessages();
-      case 'profile':
-        return renderProfile();
-      case 'support':
-        return renderSupport();
-      default:
-        return renderStudentOverview();
-    }
-  };
-
-  const renderTutorOverview = () => (
+  const renderOverview = () => (
     <>
       {/* Welcome Section */}
       <div className="space-y-4">
@@ -415,7 +341,7 @@ export default function DashboardPage() {
                         {booking.subject || "Subject"}
                       </Badge>
                       <span className="text-xs text-gray-600">
-                        {safeFormatDate(booking.sessionDate, booking.sessionTime)}
+                        {booking.sessionDate ? format(new Date(booking.sessionDate), 'MMM d') : "Date"} • {booking.sessionTime || "Time"}
                       </span>
                     </div>
                   </div>
@@ -702,423 +628,7 @@ export default function DashboardPage() {
     </>
   );
 
-  const renderStudentOverview = () => (
-    <>
-      {/* Welcome Section */}
-      <div className="space-y-4">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <div>
-            <h1 className="text-3xl md:text-4xl font-bold mb-2" style={{ color: '#073045' }}>
-              Welcome back, <span className="text-[#1d636c]">{userData?.firstName || "Student"}!</span>
-            </h1>
-            <p className="text-gray-600 text-lg">
-              Track your child's learning progress and upcoming sessions.
-            </p>
-          </div>
-          <div className="flex items-center space-x-2">
-            <Badge className="gap-1" style={{ backgroundColor: '#e6941f', color: '#073045' }}>
-              <CheckCircle className="h-3 w-3" />
-              {stats?.completionRate || 0}% Completion Rate
-            </Badge>
-            <Badge variant="outline" className="border-2" style={{ borderColor: '#1d636c', color: '#1d636c' }}>
-              <Brain className="h-3 w-3" />
-              Active Learning
-            </Badge>
-          </div>
-        </div>
-      </div>
-
-      {/* Stats Cards */}
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
-        <Card className="border-2 hover:shadow-xl transition-all duration-300 hover:-translate-y-1" style={{ borderColor: '#1d636c' }}>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="p-2 rounded-lg" style={{ backgroundColor: '#1d636c' }}>
-                <Calendar className="h-5 w-5 text-white" />
-              </div>
-              <Badge className="gap-1" style={{ backgroundColor: '#e6941f', color: '#073045' }}>
-                <TrendingUp className="h-3 w-3" />
-                Active
-              </Badge>
-            </div>
-            <div>
-              <p className="text-sm text-gray-600 mb-1">Active Sessions</p>
-              <p className="text-2xl font-bold" style={{ color: '#073045' }}>
-                {stats?.activeSessions || 0}
-              </p>
-              <p className="text-xs text-gray-600 mt-1">Currently learning</p>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-2 hover:shadow-xl transition-all duration-300 hover:-translate-y-1" style={{ borderColor: '#e6941f' }}>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="p-2 rounded-lg" style={{ backgroundColor: '#e6941f' }}>
-                <Users className="h-5 w-5 text-white" />
-              </div>
-              <Badge style={{ backgroundColor: '#073045', color: 'white' }}>
-                {stats?.totalTutors || 0}
-              </Badge>
-            </div>
-            <div>
-              <p className="text-sm text-gray-600 mb-1">Total Tutors</p>
-              <p className="text-2xl font-bold" style={{ color: '#073045' }}>
-                {stats?.totalTutors || 0}
-              </p>
-              <p className="text-xs text-gray-600 mt-1">Tutors hired</p>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-2 hover:shadow-xl transition-all duration-300 hover:-translate-y-1" style={{ borderColor: '#073045' }}>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="p-2 rounded-lg" style={{ backgroundColor: '#073045' }}>
-                <DollarSign className="h-5 w-5 text-white" />
-              </div>
-              <div className="flex items-center">
-                <TrendingUp className="h-4 w-4 text-green-500" />
-                <span className="text-xs text-green-500 ml-1">+5%</span>
-              </div>
-            </div>
-            <div>
-              <p className="text-sm text-gray-600 mb-1">Total Spent</p>
-              <p className="text-2xl font-bold" style={{ color: '#073045' }}>
-                ₦{stats?.totalSpent?.toLocaleString() || '0'}
-              </p>
-              <p className="text-xs text-gray-600 mt-1">On tutoring</p>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-2 hover:shadow-xl transition-all duration-300 hover:-translate-y-1" style={{ borderColor: '#1d636c' }}>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="p-2 rounded-lg" style={{ backgroundColor: '#1d636c' }}>
-                <CheckCircle className="h-5 w-5 text-white" />
-              </div>
-              <Badge className="gap-1" style={{ backgroundColor: '#e6941f', color: '#073045' }}>
-                <Target className="h-3 w-3" />
-                On Track
-              </Badge>
-            </div>
-            <div>
-              <p className="text-sm text-gray-600 mb-1">Completion Rate</p>
-              <p className="text-2xl font-bold" style={{ color: '#073045' }}>
-                {stats?.completionRate || 0}%
-              </p>
-              <p className="text-xs text-gray-600 mt-1">Sessions completed</p>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Recent Bookings & My Tutors */}
-      <div className="grid gap-6 lg:grid-cols-2">
-        <Card className="border-2" style={{ borderColor: '#e5e7eb' }}>
-          <CardHeader>
-            <CardTitle className="flex items-center" style={{ color: '#073045' }}>
-              <Calendar className="h-5 w-5 mr-2" />
-              Recent Bookings
-            </CardTitle>
-            <CardDescription>Recent tutoring sessions booked for your child</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {bookings.slice(0, 5).map((booking) => (
-                <div 
-                  key={booking.id} 
-                  className="flex items-center justify-between p-4 border-2 rounded-lg hover:bg-gray-50 transition-colors group"
-                  style={{ borderColor: '#e5e7eb' }}
-                >
-                  <div className="space-y-2">
-                    <div className="flex items-center space-x-2">
-                      <Avatar className="h-8 w-8">
-                        <AvatarFallback className="text-xs">
-                          {booking.tutorName?.charAt(0) || "T"}
-                        </AvatarFallback>
-                      </Avatar>
-                      <p className="font-medium text-sm" style={{ color: '#073045' }}>
-                        {booking.tutorName || "Tutor"}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2">
-                      <Badge 
-                        className="text-xs border"
-                        style={{ borderColor: '#1d636c', color: '#1d636c' }}
-                      >
-                        {booking.subject || "Subject"}
-                      </Badge>
-                      <span className="text-xs text-gray-600">
-                        {safeFormatDate(booking.sessionDate, booking.sessionTime)}
-                      </span>
-                    </div>
-                  </div>
-                  <div className="text-right space-y-1">
-                    <Badge 
-                      className={`text-xs ${
-                        booking.status === 'completed' ? 'bg-green-100 text-green-800' :
-                        booking.status === 'confirmed' ? 'bg-blue-100 text-blue-800' :
-                        booking.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                        'bg-red-100 text-red-800'
-                      }`}
-                    >
-                      {booking.status}
-                    </Badge>
-                    <p className="text-sm font-medium" style={{ color: '#073045' }}>
-                      ₦{booking.amount?.toLocaleString() || '0'}
-                    </p>
-                  </div>
-                </div>
-              ))}
-              {bookings.length === 0 && (
-                <div className="text-center py-8">
-                  <Calendar className="h-12 w-12 mx-auto mb-4" style={{ color: '#1d636c' }} />
-                  <p className="text-gray-600">No bookings yet</p>
-                  <p className="text-sm text-gray-600 mt-2">
-                    Start by finding a tutor for your child
-                  </p>
-                </div>
-              )}
-            </div>
-            <div className="mt-6">
-              <Button 
-                variant="outline" 
-                className="w-full border-2 hover:opacity-80 group"
-                style={{ borderColor: '#1d636c', color: '#1d636c' }}
-                onClick={() => setActiveTab('bookings')}
-              >
-                View All Bookings
-                <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform" />
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-2" style={{ borderColor: '#e5e7eb' }}>
-          <CardHeader>
-            <CardTitle className="flex items-center" style={{ color: '#073045' }}>
-              <Users className="h-5 w-5 mr-2" />
-              My Tutors
-            </CardTitle>
-            <CardDescription>Tutors currently teaching your child</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {myTutors.slice(0, 5).map((tutor, index) => (
-                <div 
-                  key={index} 
-                  className="flex items-center justify-between p-4 border-2 rounded-lg hover:bg-gray-50 transition-colors group"
-                  style={{ borderColor: '#e5e7eb' }}
-                >
-                  <div className="flex items-center space-x-3">
-                    <Avatar className="h-10 w-10 border-2" style={{ borderColor: '#1d636c' }}>
-                      <AvatarFallback className="text-white" style={{ backgroundColor: '#1d636c' }}>
-                        {tutor.name?.split(' ').map(n => n[0]).join('')}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div>
-                      <p className="font-medium text-sm" style={{ color: '#073045' }}>
-                        {tutor.name}
-                      </p>
-                      <div className="flex items-center gap-2 mt-1">
-                        <Badge 
-                          className="text-xs"
-                          style={{ backgroundColor: '#e6941f', color: '#073045' }}
-                        >
-                          {tutor.subject}
-                        </Badge>
-                        <div className="flex items-center">
-                          <Star className="h-3 w-3 text-yellow-500 mr-1" />
-                          <span className="text-xs">{tutor.rating}</span>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-                  <Badge className="bg-green-100 text-green-800">
-                    {tutor.sessions} sessions
-                  </Badge>
-                </div>
-              ))}
-              {myTutors.length === 0 && (
-                <div className="text-center py-8">
-                  <Users className="h-12 w-12 mx-auto mb-4" style={{ color: '#1d636c' }} />
-                  <p className="text-gray-600">No tutors yet</p>
-                  <p className="text-sm text-gray-600 mt-2">
-                    Find a tutor to start learning
-                  </p>
-                </div>
-              )}
-            </div>
-            <div className="mt-6">
-              <Button 
-                variant="outline" 
-                className="w-full border-2 hover:opacity-80 group"
-                style={{ borderColor: '#e6941f', color: '#e6941f' }}
-                onClick={() => setActiveTab('tutors')}
-              >
-                View All Tutors
-                <ArrowRight className="ml-2 h-4 w-4 group-hover:translate-x-1 transition-transform" />
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Learning Progress */}
-      <Card className="border-2" style={{ borderColor: '#e5e7eb' }}>
-        <CardHeader>
-          <CardTitle className="flex items-center" style={{ color: '#073045' }}>
-            <TrendingUp className="h-5 w-5 mr-2" />
-            Learning Progress
-          </CardTitle>
-          <CardDescription>Track your child's academic improvement</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
-            <div className="space-y-4 p-4 border-2 rounded-lg" style={{ borderColor: '#e5e7eb' }}>
-              <div className="flex items-center space-x-3">
-                <div className="p-2 rounded-lg" style={{ backgroundColor: '#1d636c' }}>
-                  <Zap className="h-5 w-5 text-white" />
-                </div>
-                <div>
-                  <p className="text-sm font-medium" style={{ color: '#073045' }}>Attendance Rate</p>
-                  <p className="text-2xl font-bold">{stats?.attendanceRate || 95}%</p>
-                </div>
-              </div>
-              <Progress value={stats?.attendanceRate || 95} className="h-2" />
-            </div>
-
-            <div className="space-y-4 p-4 border-2 rounded-lg" style={{ borderColor: '#e5e7eb' }}>
-              <div className="flex items-center space-x-3">
-                <div className="p-2 rounded-lg" style={{ backgroundColor: '#e6941f' }}>
-                  <Lightbulb className="h-5 w-5 text-white" />
-                </div>
-                <div>
-                  <p className="text-sm font-medium" style={{ color: '#073045' }}>Homework Completion</p>
-                  <p className="text-2xl font-bold">{stats?.homeworkCompletion || 88}%</p>
-                </div>
-              </div>
-              <Progress value={stats?.homeworkCompletion || 88} className="h-2" />
-            </div>
-
-            <div className="space-y-4 p-4 border-2 rounded-lg" style={{ borderColor: '#e5e7eb' }}>
-              <div className="flex items-center space-x-3">
-                <div className="p-2 rounded-lg" style={{ backgroundColor: '#073045' }}>
-                  <TargetIcon className="h-5 w-5 text-white" />
-                </div>
-                <div>
-                  <p className="text-sm font-medium" style={{ color: '#073045' }}>Grade Improvement</p>
-                  <p className="text-2xl font-bold">+{stats?.gradeImprovement || 15}%</p>
-                </div>
-              </div>
-              <p className="text-sm text-gray-600">Average score increase</p>
-            </div>
-
-            <div className="space-y-4 p-4 border-2 rounded-lg" style={{ borderColor: '#e5e7eb' }}>
-              <div className="flex items-center space-x-3">
-                <div className="p-2 rounded-lg" style={{ backgroundColor: '#1d636c' }}>
-                  <BookCheck className="h-5 w-5 text-white" />
-                </div>
-                <div>
-                  <p className="text-sm font-medium" style={{ color: '#073045' }}>Lessons Completed</p>
-                  <p className="text-2xl font-bold">{stats?.lessonsCompleted || 24}</p>
-                </div>
-              </div>
-              <p className="text-sm text-gray-600">
-                {stats?.subjects?.slice(0, 2).join(', ') || 'Mathematics, Science'}
-              </p>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Quick Actions */}
-      <Card className="border-2" style={{ borderColor: '#e5e7eb' }}>
-        <CardHeader>
-          <CardTitle className="flex items-center" style={{ color: '#073045' }}>
-            <Sparkles className="h-5 w-5 mr-2" />
-            Quick Actions
-          </CardTitle>
-          <CardDescription>Common tasks and shortcuts</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
-            <Button 
-              variant="outline"
-              className="h-auto py-6 border-2 hover:border-[#1d636c] transition-all duration-300 hover:-translate-y-1 cursor-pointer group"
-              style={{ borderColor: '#e5e7eb', color: '#073045' }}
-              onClick={() => window.location.href = '/tutors'}
-            >
-              <div className="flex items-center space-x-3">
-                <div className="p-2 rounded-lg" style={{ backgroundColor: '#1d636c' }}>
-                  <Users className="h-5 w-5 text-white" />
-                </div>
-                <div className="text-left">
-                  <p className="font-medium">Find New Tutor</p>
-                  <p className="text-xs text-gray-600">Browse tutors</p>
-                </div>
-              </div>
-            </Button>
-
-            <Button 
-              variant="outline"
-              className="h-auto py-6 border-2 hover:border-[#e6941f] transition-all duration-300 hover:-translate-y-1 cursor-pointer group"
-              style={{ borderColor: '#e5e7eb', color: '#073045' }}
-              onClick={() => setActiveTab('bookings')}
-            >
-              <div className="flex items-center space-x-3">
-                <div className="p-2 rounded-lg" style={{ backgroundColor: '#e6941f' }}>
-                  <Calendar className="h-5 w-5 text-white" />
-                </div>
-                <div className="text-left">
-                  <p className="font-medium">Book New Session</p>
-                  <p className="text-xs text-gray-600">Schedule lesson</p>
-                </div>
-              </div>
-            </Button>
-
-            <Button 
-              variant="outline"
-              className="h-auto py-6 border-2 hover:border-[#073045] transition-all duration-300 hover:-translate-y-1 cursor-pointer group"
-              style={{ borderColor: '#e5e7eb', color: '#073045' }}
-              onClick={() => setActiveTab('payments')}
-            >
-              <div className="flex items-center space-x-3">
-                <div className="p-2 rounded-lg" style={{ backgroundColor: '#073045' }}>
-                  <DollarSign className="h-5 w-5 text-white" />
-                </div>
-                <div className="text-left">
-                  <p className="font-medium">Make Payment</p>
-                  <p className="text-xs text-gray-600">Pay for sessions</p>
-                </div>
-              </div>
-            </Button>
-
-            <Button 
-              variant="outline"
-              className="h-auto py-6 border-2 hover:border-[#1d636c] transition-all duration-300 hover:-translate-y-1 cursor-pointer group"
-              style={{ borderColor: '#e5e7eb', color: '#073045' }}
-              onClick={() => setActiveTab('messages')}
-            >
-              <div className="flex items-center space-x-3">
-                <div className="p-2 rounded-lg" style={{ backgroundColor: '#1d636c' }}>
-                  <MessageSquare className="h-5 w-5 text-white" />
-                </div>
-                <div className="text-left">
-                  <p className="font-medium">Contact Tutors</p>
-                  <p className="text-xs text-gray-600">Send message</p>
-                </div>
-              </div>
-            </Button>
-          </div>
-        </CardContent>
-      </Card>
-    </>
-  );
-
-  const renderTutorBookings = () => (
+  const renderBookings = () => (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
@@ -1158,7 +668,7 @@ export default function DashboardPage() {
                       <p className="font-semibold">{booking.studentName}</p>
                       <p className="text-sm text-gray-600">{booking.subject}</p>
                       <div className="flex items-center gap-4 mt-1">
-                        <span className="text-sm">{safeFormatDate(booking.sessionDate)}</span>
+                        <span className="text-sm">{booking.sessionDate ? format(new Date(booking.sessionDate), 'MMM d, yyyy') : 'Date not set'}</span>
                         <span className="text-sm">{booking.sessionTime}</span>
                         <Badge style={{ backgroundColor: '#e6941f', color: '#073045' }}>
                           ₦{booking.amount?.toLocaleString()}
@@ -1198,7 +708,7 @@ export default function DashboardPage() {
                       <p className="font-semibold">{booking.studentName}</p>
                       <p className="text-sm text-gray-600">{booking.subject}</p>
                       <p className="text-xs text-gray-500">
-                        Completed on {safeFormatDate(booking.sessionDate)}
+                        Completed on {booking.sessionDate ? format(new Date(booking.sessionDate), 'MMM d, yyyy') : 'N/A'}
                       </p>
                     </div>
                   </div>
@@ -1215,105 +725,7 @@ export default function DashboardPage() {
     </div>
   );
 
-  const renderStudentBookings = () => (
-    <div className="space-y-6">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold" style={{ color: '#073045' }}>Bookings</h1>
-          <p className="text-gray-600">Manage your child's tutoring sessions</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm">
-            <Filter className="h-4 w-4 mr-2" />
-            Filter
-          </Button>
-          <Button 
-            size="sm"
-            style={{ backgroundColor: '#1d636c', color: 'white' }}
-            onClick={() => window.location.href = '/tutors'}
-          >
-            <Plus className="h-4 w-4 mr-2" />
-            Book New Session
-          </Button>
-        </div>
-      </div>
-
-      <div className="grid gap-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>Upcoming Sessions</CardTitle>
-            <CardDescription>Confirmed tutoring sessions</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {bookings.filter(b => b.status === 'confirmed').slice(0, 5).map((booking) => (
-                <div key={booking.id} className="flex items-center justify-between p-4 border rounded-lg">
-                  <div className="flex items-center space-x-4">
-                    <div className="p-3 rounded-lg" style={{ backgroundColor: '#1d636c' }}>
-                      <Calendar className="h-6 w-6 text-white" />
-                    </div>
-                    <div>
-                      <p className="font-semibold">{booking.tutorName}</p>
-                      <p className="text-sm text-gray-600">{booking.subject}</p>
-                      <div className="flex items-center gap-4 mt-1">
-                        <span className="text-sm">{safeFormatDate(booking.sessionDate)}</span>
-                        <span className="text-sm">{booking.sessionTime}</span>
-                        <Badge style={{ backgroundColor: '#e6941f', color: '#073045' }}>
-                          ₦{booking.amount?.toLocaleString()}
-                        </Badge>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Button variant="outline" size="sm">
-                      <Video className="h-4 w-4 mr-2" />
-                      Join
-                    </Button>
-                    <Button variant="ghost" size="sm">
-                      <Edit className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Session History</CardTitle>
-            <CardDescription>Past completed sessions</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {bookings.filter(b => b.status === 'completed').slice(0, 5).map((booking) => (
-                <div key={booking.id} className="flex items-center justify-between p-4 border rounded-lg">
-                  <div className="flex items-center space-x-4">
-                    <Avatar className="h-10 w-10">
-                      <AvatarFallback>{booking.tutorName?.charAt(0)}</AvatarFallback>
-                    </Avatar>
-                    <div>
-                      <p className="font-semibold">{booking.tutorName}</p>
-                      <p className="text-sm text-gray-600">{booking.subject}</p>
-                      <p className="text-xs text-gray-500">
-                        Completed on {safeFormatDate(booking.sessionDate)}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <p className="font-semibold">₦{booking.amount?.toLocaleString()}</p>
-                    <Badge className="bg-green-100 text-green-800">Completed</Badge>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    </div>
-  );
-
-  const renderTutorStudents = () => (
+  const renderStudents = () => (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
@@ -1385,77 +797,7 @@ export default function DashboardPage() {
     </div>
   );
 
-  const renderStudentTutors = () => (
-    <div className="space-y-6">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold" style={{ color: '#073045' }}>My Tutors</h1>
-          <p className="text-gray-600">Tutors teaching your child</p>
-        </div>
-        <Button 
-          size="sm"
-          style={{ backgroundColor: '#1d636c', color: 'white' }}
-          onClick={() => window.location.href = '/tutors'}
-        >
-          <Plus className="h-4 w-4 mr-2" />
-          Find New Tutor
-        </Button>
-      </div>
-
-      <Card>
-        <CardContent className="pt-6">
-          <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-            {myTutors.map((tutor, index) => (
-              <Card key={index} className="border hover:shadow-lg transition-shadow">
-                <CardContent className="pt-6">
-                  <div className="flex flex-col items-center text-center space-y-4">
-                    <Avatar className="h-20 w-20 border-4" style={{ borderColor: '#1d636c' }}>
-                      <AvatarFallback className="text-xl">
-                        {tutor.name.split(' ').map(n => n[0]).join('')}
-                      </AvatarFallback>
-                    </Avatar>
-                    <div>
-                      <h3 className="font-bold text-lg">{tutor.name}</h3>
-                      <p className="text-gray-600">{tutor.subject}</p>
-                      <div className="flex items-center justify-center gap-2 mt-2">
-                        <Badge style={{ backgroundColor: '#e6941f', color: '#073045' }}>
-                          <Star className="h-3 w-3 mr-1" />
-                          {tutor.rating}
-                        </Badge>
-                        <Badge variant="outline">
-                          {tutor.sessions} sessions
-                        </Badge>
-                      </div>
-                    </div>
-                    <div className="w-full space-y-2">
-                      <Button 
-                        variant="outline" 
-                        className="w-full"
-                        style={{ borderColor: '#1d636c', color: '#1d636c' }}
-                      >
-                        <MessageSquare className="h-4 w-4 mr-2" />
-                        Message
-                      </Button>
-                      <Button 
-                        variant="ghost" 
-                        className="w-full"
-                        onClick={() => setActiveTab('bookings')}
-                      >
-                        <Calendar className="h-4 w-4 mr-2" />
-                        Book Session
-                      </Button>
-                    </div>
-                  </div>
-                </CardContent>
-              </Card>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-    </div>
-  );
-
-  const renderTutorEarnings = () => (
+  const renderEarnings = () => (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
@@ -1549,7 +891,7 @@ export default function DashboardPage() {
                   </div>
                   <div>
                     <p className="font-semibold">{booking.studentName}</p>
-                    <p className="text-sm text-gray-600">{booking.subject} • {safeFormatDate(booking.sessionDate)}</p>
+                    <p className="text-sm text-gray-600">{booking.subject} • {booking.sessionDate ? format(new Date(booking.sessionDate), 'MMM d, yyyy') : 'N/A'}</p>
                   </div>
                 </div>
                 <div className="text-right">
@@ -1566,102 +908,7 @@ export default function DashboardPage() {
     </div>
   );
 
-  const renderStudentPayments = () => (
-    <div className="space-y-6">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold" style={{ color: '#073045' }}>Payments</h1>
-          <p className="text-gray-600">Manage your tutoring payments</p>
-        </div>
-        <Button 
-          size="sm"
-          style={{ backgroundColor: '#1d636c', color: 'white' }}
-        >
-          <CreditCard className="h-4 w-4 mr-2" />
-          Add Payment Method
-        </Button>
-      </div>
-
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="p-2 rounded-lg" style={{ backgroundColor: '#1d636c' }}>
-                <DollarSign className="h-5 w-5 text-white" />
-              </div>
-              <Badge className="bg-green-100 text-green-800">
-                Updated
-              </Badge>
-            </div>
-            <p className="text-sm text-gray-600">Total Spent</p>
-            <p className="text-2xl font-bold">₦{stats?.totalSpent?.toLocaleString() || '0'}</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="p-2 rounded-lg" style={{ backgroundColor: '#e6941f' }}>
-                <Calendar className="h-5 w-5 text-white" />
-              </div>
-              <Badge className="bg-blue-100 text-blue-800">
-                This Month
-              </Badge>
-            </div>
-            <p className="text-sm text-gray-600">This Month</p>
-            <p className="text-2xl font-bold">₦{(stats?.totalSpent * 0.3 || 0).toLocaleString()}</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="p-2 rounded-lg" style={{ backgroundColor: '#073045' }}>
-                <Clock className="h-5 w-5 text-white" />
-              </div>
-              <Badge className="bg-yellow-100 text-yellow-800">
-                Pending
-              </Badge>
-            </div>
-            <p className="text-sm text-gray-600">Upcoming Payments</p>
-            <p className="text-2xl font-bold">₦{(stats?.totalSpent * 0.1 || 0).toLocaleString()}</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Payment History</CardTitle>
-          <CardDescription>Recent payments for tutoring</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            {bookings.slice(0, 10).map((booking) => (
-              <div key={booking.id} className="flex items-center justify-between p-4 border rounded-lg">
-                <div className="flex items-center space-x-4">
-                  <div className={`p-2 rounded-lg ${booking.status === 'completed' ? 'bg-green-100' : 'bg-yellow-100'}`}>
-                    <DollarSign className={`h-5 w-5 ${booking.status === 'completed' ? 'text-green-800' : 'text-yellow-800'}`} />
-                  </div>
-                  <div>
-                    <p className="font-semibold">{booking.tutorName}</p>
-                    <p className="text-sm text-gray-600">{booking.subject} • {safeFormatDate(booking.sessionDate)}</p>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <p className="font-semibold">₦{booking.amount?.toLocaleString()}</p>
-                  <Badge className={booking.status === 'completed' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}>
-                    {booking.status}
-                  </Badge>
-                </div>
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-    </div>
-  );
-
-  const renderTutorSchedule = () => (
+  const renderSchedule = () => (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
@@ -1723,7 +970,7 @@ export default function DashboardPage() {
                   </div>
                   <div className="flex items-center justify-between text-sm">
                     <span className="text-gray-600">
-                      {safeFormatDate(booking.sessionDate, booking.sessionTime)}
+                      {booking.sessionDate ? format(new Date(booking.sessionDate), 'MMM d, yyyy') : 'Date'} • {booking.sessionTime}
                     </span>
                     <span className="font-medium">₦{booking.amount?.toLocaleString()}</span>
                   </div>
@@ -1736,7 +983,7 @@ export default function DashboardPage() {
     </div>
   );
 
-  const renderTutorResources = () => (
+  const renderResources = () => (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
@@ -1747,7 +994,7 @@ export default function DashboardPage() {
           variant="outline"
           size="sm"
         >
-          <UploadIcon className="h-4 w-4 mr-2" />
+          <Upload className="h-4 w-4 mr-2" />
           Upload Resource
         </Button>
       </div>
@@ -1786,7 +1033,7 @@ export default function DashboardPage() {
     </div>
   );
 
-  const renderTutorPerformance = () => (
+  const renderPerformance = () => (
     <div className="space-y-6">
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
@@ -1913,176 +1160,6 @@ export default function DashboardPage() {
     </div>
   );
 
-  const renderMessages = () => (
-    <div className="space-y-6">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold" style={{ color: '#073045' }}>Messages</h1>
-          <p className="text-gray-600">Communicate with your {userData.role === 'tutor' ? 'students' : 'tutors'}</p>
-        </div>
-        <Button 
-          size="sm"
-          style={{ backgroundColor: '#1d636c', color: 'white' }}
-        >
-          <Plus className="h-4 w-4 mr-2" />
-          New Message
-        </Button>
-      </div>
-
-      <div className="grid gap-6 md:grid-cols-3">
-        <Card className="md:col-span-1">
-          <CardHeader>
-            <CardTitle>Conversations</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {recentMessages.map((message, index) => (
-                <div 
-                  key={index} 
-                  className={`p-3 rounded-lg cursor-pointer hover:bg-gray-50 ${message.unread ? 'bg-blue-50' : ''}`}
-                >
-                  <div className="flex items-center justify-between mb-2">
-                    <p className="font-semibold">{message.student}</p>
-                    {message.unread && (
-                      <div className="w-2 h-2 bg-blue-500 rounded-full"></div>
-                    )}
-                  </div>
-                  <p className="text-sm text-gray-600 truncate">{message.message}</p>
-                  <p className="text-xs text-gray-500 mt-1">{message.time}</p>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="md:col-span-2">
-          <CardHeader>
-            <CardTitle>Chat</CardTitle>
-            <CardDescription>Select a conversation to start chatting</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="flex flex-col items-center justify-center h-96">
-              <MessageSquare className="h-16 w-16 text-gray-300 mb-4" />
-              <h3 className="text-lg font-semibold mb-2">Select a conversation</h3>
-              <p className="text-gray-600 text-center">
-                Choose a conversation from the list to start messaging
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    </div>
-  );
-
-  const renderProfile = () => (
-    <div className="space-y-6">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold" style={{ color: '#073045' }}>Profile Settings</h1>
-          <p className="text-gray-600">Manage your account and preferences</p>
-        </div>
-        <Button 
-          size="sm"
-          style={{ backgroundColor: '#1d636c', color: 'white' }}
-        >
-          <Edit className="h-4 w-4 mr-2" />
-          Edit Profile
-        </Button>
-      </div>
-
-      <div className="grid gap-6 md:grid-cols-3">
-        <Card className="md:col-span-1">
-          <CardContent className="pt-6">
-            <div className="flex flex-col items-center text-center space-y-4">
-              <Avatar className="h-32 w-32 border-4" style={{ borderColor: '#1d636c' }}>
-                <AvatarImage src={user?.photoURL || ""} />
-                <AvatarFallback className="text-2xl">
-                  {userData?.firstName?.charAt(0)}{userData?.lastName?.charAt(0)}
-                </AvatarFallback>
-              </Avatar>
-              <div>
-                <h3 className="text-xl font-bold">{userData?.firstName} {userData?.lastName}</h3>
-                <p className="text-gray-600">
-                  {userData.role === 'tutor' ? 'Verified Tutor' : 'Parent/Student'}
-                </p>
-                <div className="mt-2">
-                  <Badge style={{ backgroundColor: '#e6941f', color: '#073045' }}>
-                    {userData?.role === 'tutor' ? 'Premium Tutor' : 'Active Account'}
-                  </Badge>
-                </div>
-              </div>
-              <Button 
-                variant="outline" 
-                className="w-full"
-                style={{ borderColor: '#1d636c', color: '#1d636c' }}
-              >
-                Change Photo
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="md:col-span-2">
-          <CardHeader>
-            <CardTitle>Account Information</CardTitle>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-6">
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <p className="text-sm font-medium text-gray-600">First Name</p>
-                  <p className="text-lg">{userData?.firstName || 'N/A'}</p>
-                </div>
-                <div>
-                  <p className="text-sm font-medium text-gray-600">Last Name</p>
-                  <p className="text-lg">{userData?.lastName || 'N/A'}</p>
-                </div>
-              </div>
-              
-              <div>
-                <p className="text-sm font-medium text-gray-600">Email</p>
-                <p className="text-lg">{user?.email || 'N/A'}</p>
-              </div>
-              
-              <div>
-                <p className="text-sm font-medium text-gray-600">Phone Number</p>
-                <p className="text-lg">{userData?.phoneNumber || 'Not provided'}</p>
-              </div>
-              
-              {userData.role === 'tutor' && (
-                <div>
-                  <p className="text-sm font-medium text-gray-600">Subjects</p>
-                  <div className="flex flex-wrap gap-2 mt-2">
-                    {stats?.subjects?.map((subject: string, index: number) => (
-                      <Badge key={index} style={{ backgroundColor: '#e6941f', color: '#073045' }}>
-                        {subject}
-                      </Badge>
-                    )) || <p className="text-gray-600">No subjects listed</p>}
-                  </div>
-                </div>
-              )}
-              
-              <div className="pt-4 border-t">
-                <h4 className="font-semibold mb-4">Security</h4>
-                <div className="space-y-3">
-                  <Button variant="outline" className="w-full justify-start">
-                    Change Password
-                  </Button>
-                  <Button variant="outline" className="w-full justify-start">
-                    Two-Factor Authentication
-                  </Button>
-                  <Button variant="outline" className="w-full justify-start text-red-600 hover:text-red-700">
-                    Delete Account
-                  </Button>
-                </div>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    </div>
-  );
-
   const renderSupport = () => (
     <div className="space-y-6">
       <div className="text-center max-w-2xl mx-auto">
@@ -2091,7 +1168,7 @@ export default function DashboardPage() {
         </div>
         <h1 className="text-3xl font-bold mb-4" style={{ color: '#073045' }}>Help & Support</h1>
         <p className="text-gray-600 text-lg">
-          We're here to help you succeed. Get assistance with any issues or questions.
+          We're here to help you succeed as a tutor. Get assistance with any issues or questions.
         </p>
       </div>
 
@@ -2166,28 +1243,16 @@ export default function DashboardPage() {
         <CardContent>
           <div className="space-y-4">
             <div className="p-4 border rounded-lg">
-              <h3 className="font-semibold mb-2">How do I {userData.role === 'tutor' ? 'update my availability' : 'book a session'}?</h3>
-              <p className="text-gray-600">
-                {userData.role === 'tutor' 
-                  ? 'Go to the Schedule section and click "Add Availability" to set your teaching hours.'
-                  : 'Find a tutor from the Tutors page, select a time slot, and complete the booking process.'}
-              </p>
+              <h3 className="font-semibold mb-2">How do I update my availability?</h3>
+              <p className="text-gray-600">Go to the Schedule section and click "Add Availability" to set your teaching hours.</p>
             </div>
             <div className="p-4 border rounded-lg">
-              <h3 className="font-semibold mb-2">When do {userData.role === 'tutor' ? 'I get paid' : 'payments process'}?</h3>
-              <p className="text-gray-600">
-                {userData.role === 'tutor'
-                  ? 'Payments are processed weekly on Fridays for all completed sessions.'
-                  : 'Payments are processed immediately upon booking confirmation. You can view payment history in the Payments section.'}
-              </p>
+              <h3 className="font-semibold mb-2">When do I get paid?</h3>
+              <p className="text-gray-600">Payments are processed weekly on Fridays for all completed sessions.</p>
             </div>
             <div className="p-4 border rounded-lg">
-              <h3 className="font-semibold mb-2">How can I {userData.role === 'tutor' ? 'improve my rating' : 'track progress'}?</h3>
-              <p className="text-gray-600">
-                {userData.role === 'tutor'
-                  ? 'Be punctual, prepared, and provide quality instruction. Request feedback after sessions.'
-                  : 'Monitor learning progress in the Overview section and review session feedback from tutors.'}
-              </p>
+              <h3 className="font-semibold mb-2">How can I improve my rating?</h3>
+              <p className="text-gray-600">Be punctual, prepared, and provide quality instruction. Request feedback after sessions.</p>
             </div>
           </div>
         </CardContent>
@@ -2203,7 +1268,96 @@ export default function DashboardPage() {
             <Loader2 className="h-8 w-8 text-white animate-spin" />
           </div>
           <h3 className="text-xl font-semibold" style={{ color: '#073045' }}>Loading Dashboard</h3>
-          <p className="text-gray-600">Preparing your insights...</p>
+          <p className="text-gray-600">Preparing your tutoring insights...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // Check if tutor is approved
+  if (userData?.tutorStatus !== 'approved') {
+    return (
+      <div className="flex flex-col min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
+        {/* Header */}
+        <header className="sticky top-0 z-50 w-full border-b bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/60">
+          <div className="container mx-auto flex h-16 items-center justify-between px-4 md:px-6 max-w-7xl">
+            <div className="flex items-center space-x-2">
+              <Image 
+                src="/edumentor-logo.png"
+                alt="Edumentor Logo"
+                width={32}
+                height={32}
+                className="h-8 w-8"
+              />
+              <span className="text-2xl font-bold" style={{ color: '#073045' }}>Edumentor</span>
+            </div>
+            <div className="flex items-center space-x-4">
+              <Link href="/">
+                <Button variant="ghost" size="sm" className="hover:opacity-80" style={{ color: '#073045' }}>
+                  <ArrowLeft className="mr-2 h-4 w-4" />
+                  Back to Home
+                </Button>
+              </Link>
+              <Link href="/tutor-dashboard">
+                <Button size="sm" className="text-white hover:opacity-90" style={{ backgroundColor: '#1d636c' }}>
+                  Dashboard
+                </Button>
+              </Link>
+            </div>
+          </div>
+        </header>
+
+        <div className="flex-1 flex items-center justify-center p-6">
+          <Card className="w-full max-w-md shadow-2xl border-2" style={{ borderColor: '#e5e7eb' }}>
+            <CardHeader className="text-center">
+              <div className="w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4" style={{ backgroundColor: '#e6941f' }}>
+                <Clock className="h-10 w-10 text-white" />
+              </div>
+              <CardTitle className="text-2xl" style={{ color: '#073045' }}>Application Under Review</CardTitle>
+              <CardDescription className="text-lg">
+                {userData?.tutorStatus === 'pending_payment' 
+                  ? "Please complete your application by making the ₦5,000 payment."
+                  : "Your tutor application is being reviewed by our team."}
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-6">
+              <div className="text-center space-y-3">
+                <p className="text-gray-600">
+                  {userData?.tutorStatus === 'pending_payment'
+                    ? "Complete your application to start receiving students and earning income."
+                    : "We'll notify you via email once your application is approved. This usually takes 2-3 business days."}
+                </p>
+                <Badge className="mx-auto" style={{ backgroundColor: '#e6941f', color: '#073045' }}>
+                  <Sparkles className="inline h-3 w-3 mr-1" />
+                  Estimated review time: 2-3 business days
+                </Badge>
+              </div>
+              
+              <div className="space-y-3">
+                {userData?.tutorStatus === 'pending_payment' && (
+                  <Link href="/become-tutor">
+                    <Button 
+                      className="w-full hover:opacity-90"
+                      style={{ backgroundColor: '#1d636c', color: 'white' }}
+                    >
+                      Complete Application
+                      <ArrowRight className="ml-2 h-4 w-4" />
+                    </Button>
+                  </Link>
+                )}
+                
+                <Link href="/">
+                  <Button 
+                    variant="outline" 
+                    className="w-full border-2 hover:opacity-80"
+                    style={{ borderColor: '#e6941f', color: '#e6941f' }}
+                  >
+                    Return to Home
+                  </Button>
+                </Link>
+              </div>
+            </CardContent>
+          </Card>
         </div>
       </div>
     );
@@ -2224,13 +1378,17 @@ export default function DashboardPage() {
               </svg>
             </button>
             <div className="flex items-center space-x-2">
-              <div className="h-8 w-8 flex items-center justify-center rounded-lg" style={{ backgroundColor: '#1d636c' }}>
-                <BookOpen className="h-5 w-5 text-white" />
-              </div>
+              <Image 
+                src="/edumentor-logo.png"
+                alt="Edumentor Logo"
+                width={32}
+                height={32}
+                className="h-8 w-8"
+              />
               <span className="text-2xl font-bold" style={{ color: '#073045' }}>Edumentor</span>
               <Badge className="hidden md:inline-flex" style={{ backgroundColor: '#e6941f', color: '#073045' }}>
                 <Sparkles className="inline h-3 w-3 mr-1" />
-                {userData?.role === 'tutor' ? 'Tutor Dashboard' : 'Student Dashboard'}
+                Tutor Dashboard
               </Badge>
             </div>
           </div>
@@ -2245,7 +1403,7 @@ export default function DashboardPage() {
             
             <div className="hidden md:flex items-center space-x-3">
               <Avatar className="h-9 w-9 border-2" style={{ borderColor: '#1d636c' }}>
-                <AvatarImage src={user?.photoURL || ""} alt={userData?.firstName || "User"} />
+                <AvatarImage src={user?.photoURL || ""} alt={userData?.firstName || "Tutor"} />
                 <AvatarFallback className="text-white" style={{ backgroundColor: '#1d636c' }}>
                   {userData?.firstName?.charAt(0)}{userData?.lastName?.charAt(0)}
                 </AvatarFallback>
@@ -2254,9 +1412,7 @@ export default function DashboardPage() {
                 <p className="text-sm font-semibold" style={{ color: '#073045' }}>
                   {userData?.firstName} {userData?.lastName}
                 </p>
-                <p className="text-xs text-gray-600">
-                  {userData?.role === 'tutor' ? 'Verified Tutor' : 'Parent/Student'}
-                </p>
+                <p className="text-xs text-gray-600">Verified Tutor</p>
               </div>
             </div>
             
@@ -2291,7 +1447,7 @@ export default function DashboardPage() {
             {/* User Profile */}
             <div className="flex items-center space-x-3 mb-8 p-4 rounded-lg" style={{ backgroundColor: '#f8f9fa' }}>
               <Avatar className="h-12 w-12 border-2" style={{ borderColor: '#1d636c' }}>
-                <AvatarImage src={user?.photoURL || ""} alt={userData?.firstName || "User"} />
+                <AvatarImage src={user?.photoURL || ""} alt={userData?.firstName || "Tutor"} />
                 <AvatarFallback className="text-white" style={{ backgroundColor: '#1d636c' }}>
                   {userData?.firstName?.charAt(0)}{userData?.lastName?.charAt(0)}
                 </AvatarFallback>
@@ -2303,7 +1459,7 @@ export default function DashboardPage() {
                 <div className="flex items-center">
                   <Badge className="mt-1" style={{ backgroundColor: '#e6941f', color: '#073045' }}>
                     <CheckCircle className="inline h-3 w-3 mr-1" />
-                    {userData?.role === 'tutor' ? 'Verified' : 'Active'}
+                    Verified
                   </Badge>
                 </div>
               </div>
@@ -2338,132 +1494,76 @@ export default function DashboardPage() {
                     <span className="font-medium">Bookings</span>
                   </button>
                   
-                  {userData.role === 'tutor' ? (
-                    <>
-                      <button 
-                        onClick={() => setActiveTab('students')}
-                        className={`flex items-center space-x-3 px-3 py-2.5 rounded-lg transition-all w-full text-left ${
-                          activeTab === 'students' 
-                            ? 'bg-[#1d636c] text-white' 
-                            : 'hover:bg-gray-50'
-                        }`}
-                      >
-                        <Users className="h-5 w-5" />
-                        <span className="font-medium">Students</span>
-                      </button>
-                      
-                      <button 
-                        onClick={() => setActiveTab('earnings')}
-                        className={`flex items-center space-x-3 px-3 py-2.5 rounded-lg transition-all w-full text-left ${
-                          activeTab === 'earnings' 
-                            ? 'bg-[#1d636c] text-white' 
-                            : 'hover:bg-gray-50'
-                        }`}
-                      >
-                        <DollarSign className="h-5 w-5" />
-                        <span className="font-medium">Earnings</span>
-                      </button>
-                      
-                      <button 
-                        onClick={() => setActiveTab('schedule')}
-                        className={`flex items-center space-x-3 px-3 py-2.5 rounded-lg transition-all w-full text-left ${
-                          activeTab === 'schedule' 
-                            ? 'bg-[#1d636c] text-white' 
-                            : 'hover:bg-gray-50'
-                        }`}
-                      >
-                        <Clock className="h-5 w-5" />
-                        <span className="font-medium">Schedule</span>
-                      </button>
-                    </>
-                  ) : (
-                    <>
-                      <button 
-                        onClick={() => setActiveTab('tutors')}
-                        className={`flex items-center space-x-3 px-3 py-2.5 rounded-lg transition-all w-full text-left ${
-                          activeTab === 'tutors' 
-                            ? 'bg-[#1d636c] text-white' 
-                            : 'hover:bg-gray-50'
-                        }`}
-                      >
-                        <Users className="h-5 w-5" />
-                        <span className="font-medium">My Tutors</span>
-                      </button>
-                      
-                      <button 
-                        onClick={() => setActiveTab('payments')}
-                        className={`flex items-center space-x-3 px-3 py-2.5 rounded-lg transition-all w-full text-left ${
-                          activeTab === 'payments' 
-                            ? 'bg-[#1d636c] text-white' 
-                            : 'hover:bg-gray-50'
-                        }`}
-                      >
-                        <DollarSign className="h-5 w-5" />
-                        <span className="font-medium">Payments</span>
-                      </button>
-                    </>
-                  )}
-                  
                   <button 
-                    onClick={() => setActiveTab('messages')}
+                    onClick={() => setActiveTab('students')}
                     className={`flex items-center space-x-3 px-3 py-2.5 rounded-lg transition-all w-full text-left ${
-                      activeTab === 'messages' 
+                      activeTab === 'students' 
                         ? 'bg-[#1d636c] text-white' 
                         : 'hover:bg-gray-50'
                     }`}
                   >
-                    <MessageSquare className="h-5 w-5" />
-                    <span className="font-medium">Messages</span>
+                    <Users className="h-5 w-5" />
+                    <span className="font-medium">Students</span>
+                  </button>
+                  
+                  <button 
+                    onClick={() => setActiveTab('earnings')}
+                    className={`flex items-center space-x-3 px-3 py-2.5 rounded-lg transition-all w-full text-left ${
+                      activeTab === 'earnings' 
+                        ? 'bg-[#1d636c] text-white' 
+                        : 'hover:bg-gray-50'
+                    }`}
+                  >
+                    <DollarSign className="h-5 w-5" />
+                    <span className="font-medium">Earnings</span>
+                  </button>
+                  
+                  <button 
+                    onClick={() => setActiveTab('schedule')}
+                    className={`flex items-center space-x-3 px-3 py-2.5 rounded-lg transition-all w-full text-left ${
+                      activeTab === 'schedule' 
+                        ? 'bg-[#1d636c] text-white' 
+                        : 'hover:bg-gray-50'
+                    }`}
+                  >
+                    <Clock className="h-5 w-5" />
+                    <span className="font-medium">Schedule</span>
                   </button>
                 </nav>
               </div>
 
-              {userData.role === 'tutor' && (
-                <div>
-                  <h3 className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: '#1d636c' }}>Resources</h3>
-                  <nav className="space-y-1">
-                    <button 
-                      onClick={() => setActiveTab('resources')}
-                      className={`flex items-center space-x-3 px-3 py-2.5 rounded-lg transition-all w-full text-left ${
-                        activeTab === 'resources' 
-                          ? 'bg-[#1d636c] text-white' 
-                          : 'hover:bg-gray-50'
-                      }`}
-                    >
-                      <BookOpen className="h-5 w-5" />
-                      <span className="font-medium">Teaching Resources</span>
-                    </button>
-                    
-                    <button 
-                      onClick={() => setActiveTab('performance')}
-                      className={`flex items-center space-x-3 px-3 py-2.5 rounded-lg transition-all w-full text-left ${
-                        activeTab === 'performance' 
-                          ? 'bg-[#1d636c] text-white' 
-                          : 'hover:bg-gray-50'
-                      }`}
-                    >
-                      <BarChart className="h-5 w-5" />
-                      <span className="font-medium">Performance Analytics</span>
-                    </button>
-                  </nav>
-                </div>
-              )}
-
               <div>
-                <h3 className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: '#1d636c' }}>Account</h3>
+                <h3 className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: '#1d636c' }}>Resources</h3>
                 <nav className="space-y-1">
                   <button 
-                    onClick={() => setActiveTab('profile')}
+                    onClick={() => setActiveTab('resources')}
                     className={`flex items-center space-x-3 px-3 py-2.5 rounded-lg transition-all w-full text-left ${
-                      activeTab === 'profile' 
+                      activeTab === 'resources' 
                         ? 'bg-[#1d636c] text-white' 
                         : 'hover:bg-gray-50'
                     }`}
                   >
-                    <Settings className="h-5 w-5" />
-                    <span className="font-medium">Profile Settings</span>
+                    <BookOpen className="h-5 w-5" />
+                    <span className="font-medium">Teaching Resources</span>
                   </button>
                   
+                  <button 
+                    onClick={() => setActiveTab('performance')}
+                    className={`flex items-center space-x-3 px-3 py-2.5 rounded-lg transition-all w-full text-left ${
+                      activeTab === 'performance' 
+                        ? 'bg-[#1d636c] text-white' 
+                        : 'hover:bg-gray-50'
+                    }`}
+                  >
+                    <BarChart className="h-5 w-5" />
+                    <span className="font-medium">Performance Analytics</span>
+                  </button>
+                </nav>
+              </div>
+
+              <div>
+                <h3 className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: '#1d636c' }}>Support</h3>
+                <nav className="space-y-1">
                   <button 
                     onClick={() => setActiveTab('support')}
                     className={`flex items-center space-x-3 px-3 py-2.5 rounded-lg transition-all w-full text-left ${
@@ -2482,24 +1582,14 @@ export default function DashboardPage() {
             {/* Stats Summary */}
             <div className="mt-8 p-4 rounded-lg border" style={{ borderColor: '#e5e7eb' }}>
               <div className="flex items-center justify-between mb-3">
-                <span className="text-sm font-medium" style={{ color: '#073045' }}>
-                  {userData.role === 'tutor' ? 'This Month' : 'Active Status'}
-                </span>
+                <span className="text-sm font-medium" style={{ color: '#073045' }}>This Month</span>
                 <Badge style={{ backgroundColor: '#e6941f', color: '#073045' }}>
-                  {userData.role === 'tutor' 
-                    ? `₦${monthlyEarnings?.toLocaleString() || '0'}`
-                    : `${bookings.length} Bookings`}
+                  ₦{monthlyEarnings?.toLocaleString() || '0'}
                 </Badge>
               </div>
-              <Progress 
-                value={userData.role === 'tutor' ? 75 : 90} 
-                className="h-2 mb-2" 
-                style={{ backgroundColor: '#e5e7eb' }} 
-              />
+              <Progress value={75} className="h-2 mb-2" style={{ backgroundColor: '#e5e7eb' }} />
               <p className="text-xs text-gray-600">
-                {userData.role === 'tutor'
-                  ? `${bookings.length} bookings • ${activeStudents.length} active students`
-                  : `${bookings.filter(b => b.status === 'confirmed').length} upcoming • ${bookings.filter(b => b.status === 'completed').length} completed`}
+                {bookings.length} bookings • {activeStudents.length} active students
               </p>
             </div>
           </div>
@@ -2529,8 +1619,8 @@ export default function DashboardPage() {
   );
 }
 
-// Upload icon component
-const UploadIcon = ({ className = "h-4 w-4" }) => (
+// Add Upload icon component
+const Upload = ({ className = "h-4 w-4" }) => (
   <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
     <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
   </svg>
