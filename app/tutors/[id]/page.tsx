@@ -362,10 +362,10 @@ export default function TutorProfilePage() {
           </div>
           <nav className="hidden md:flex items-center space-x-6">
             <Link href="/tutors" className="text-sm font-medium hover:opacity-80 transition-colors" style={{ color: '#073045' }}>
-              Find Tutors
+              Find Mentors
             </Link>
             <Link href="/become-tutor" className="text-sm font-medium hover:opacity-80 transition-colors" style={{ color: '#073045' }}>
-              Become a Tutor
+              Become a Mentor
             </Link>
             <Link href="/about" className="text-sm font-medium hover:opacity-80 transition-colors" style={{ color: '#073045' }}>
               About
@@ -375,14 +375,14 @@ export default function TutorProfilePage() {
             <Link href="/tutors">
               <Button variant="ghost" size="sm" className="hover:opacity-80" style={{ color: '#073045' }}>
                 <ArrowLeft className="mr-2 h-4 w-4" />
-                Back to Tutors
+                Back to Mentors
               </Button>
             </Link>
             {user ? (
               userData?.role === 'tutor' || userData?.role === 'tutor_applicant' ? (
                 <Link href="/tutor-dashboard">
                   <Button size="sm" className="text-white hover:opacity-90" style={{ backgroundColor: '#1d636c' }}>
-                    Tutor Dashboard
+                    Mentor Dashboard
                   </Button>
                 </Link>
               ) : (
@@ -510,7 +510,7 @@ export default function TutorProfilePage() {
                         ) : (
                           <>
                             <BookOpen className="h-4 w-4 mr-2" />
-                            Book This Tutor
+                            Book This Mentor
                           </>
                         )}
                       </Button>
@@ -1141,7 +1141,7 @@ export default function TutorProfilePage() {
                   variant="outline" 
                   className="w-full sm:w-auto text-lg px-8 border-2 border-white text-white hover:bg-white hover:text-gray-900 transition-all"
                 >
-                  Browse More Tutors
+                  Browse More Mentors
                 </Button>
               </Link>
             </div>
@@ -1166,7 +1166,7 @@ export default function TutorProfilePage() {
               <h4 className="font-semibold text-white">For Students</h4>
               <div className="space-y-2 text-sm">
                 <Link href="/tutors" className="block text-white/80 hover:text-white transition-colors">
-                  Find Tutors
+                  Find Mentors
                 </Link>
                 <Link href="/how-it-works" className="block text-white/80 hover:text-white transition-colors">
                   How It Works
@@ -1180,7 +1180,7 @@ export default function TutorProfilePage() {
               <h4 className="font-semibold text-white">For Tutors</h4>
               <div className="space-y-2 text-sm">
                 <Link href="/become-tutor" className="block text-white/80 hover:text-white transition-colors">
-                  Join as Tutor
+                  Join as Mentor
                 </Link>
                 <Link href="/tutor-benefits" className="block text-white/80 hover:text-white transition-colors">
                   Benefits

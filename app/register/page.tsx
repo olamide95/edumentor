@@ -140,12 +140,12 @@ export default function RegisterPage() {
                     </div>
                     <CardTitle className="text-2xl" style={{ color: '#073045' }}>Student/Parent</CardTitle>
                     <CardDescription className="text-base leading-relaxed">
-                      Find qualified tutors to help your child excel academically. Access personalized learning and track progress.
+                      Find qualified mentors to help your child excel academically. Access personalized learning and track progress.
                     </CardDescription>
                     <div className="pt-4 space-y-2">
                       <div className="flex items-center justify-center space-x-2 text-sm text-gray-600">
                         <CheckCircle className="h-4 w-4" style={{ color: '#1d636c' }} />
-                        <span>Browse verified tutors</span>
+                        <span>Browse verified mentors</span>
                       </div>
                       <div className="flex items-center justify-center space-x-2 text-sm text-gray-600">
                         <CheckCircle className="h-4 w-4" style={{ color: '#1d636c' }} />
@@ -171,7 +171,7 @@ export default function RegisterPage() {
                     <div className="w-20 h-20 rounded-full flex items-center justify-center mx-auto" style={{ backgroundColor: '#e6941f' }}>
                       <GraduationCap className="h-10 w-10 text-white" />
                     </div>
-                    <CardTitle className="text-2xl" style={{ color: '#073045' }}>Become a Tutor</CardTitle>
+                    <CardTitle className="text-2xl" style={{ color: '#073045' }}>Become a Mentor</CardTitle>
                     <CardDescription className="text-base leading-relaxed">
                       Share your knowledge and earn income. Join as an NYSC corps member or experienced educator.
                     </CardDescription>
@@ -206,7 +206,7 @@ export default function RegisterPage() {
             <div className="max-w-2xl mx-auto">
               <div className="text-center space-y-3 mb-8">
                 <h1 className="text-3xl font-bold" style={{ color: '#073045' }}>Student/Parent Registration</h1>
-                <p className="text-gray-600">Create your account to start connecting with tutors</p>
+                <p className="text-gray-600">Create your account to start connecting with Mentors</p>
               </div>
 
               <Card className="shadow-2xl border-0">

@@ -59,7 +59,10 @@ import {
   TargetIcon,
   Brain,
   Zap,
-  Lightbulb
+  Lightbulb,
+  Check,
+  X,
+  AlertCircle
 } from "lucide-react"
 import Link from "next/link"
 import Image from "next/image"
@@ -71,10 +74,16 @@ import {
   getTutorPerformance,
   getActiveStudents,
   getStudentStats,
-  getUserBookings
+  getUserBookings,
+  getStudentPendingBookings,
+  updateBookingStatus,
+  createPayment,
+  getPayment,
+  updatePayment
 } from "@/lib/firebase/dashboard"
 import { format } from "date-fns"
 import { toast } from "react-hot-toast"
+import { usePaystackPayment } from "@/hooks/usePaystack"
 
 // Badge Component
 function Badge({ variant, className, children, style }: any) {
@@ -95,10 +104,16 @@ export default function DashboardPage() {
   const [activeStudents, setActiveStudents] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [selectedBooking, setSelectedBooking] = useState<any>(null);
+  const [showPaymentModal, setShowPaymentModal] = useState(false);
+  const [paymentLoading, setPaymentLoading] = useState(false);
+  const [pendingBookings, setPendingBookings] = useState<any[]>([]);
   
   // Navigation state
   const [activeTab, setActiveTab] = useState<'overview' | 'bookings' | 'tutors' | 'students' | 'earnings' | 'payments' | 'schedule' | 'resources' | 'performance' | 'support' | 'messages' | 'profile'>('overview');
   
+  const { initializePayment } = usePaystackPayment();
+
   // Mock data for other sections
   const [availability, setAvailability] = useState([
     { day: 'Monday', time: '9:00 AM - 12:00 PM', status: 'active' },
@@ -143,6 +158,12 @@ export default function DashboardPage() {
     }
   }, [user, userData]);
 
+  useEffect(() => {
+    if (user && userData && userData.role === 'student') {
+      loadPendingBookings();
+    }
+  }, [user, userData]);
+
   const loadDashboardData = async () => {
     setLoading(true);
     try {
@@ -176,9 +197,150 @@ export default function DashboardPage() {
     }
   };
 
+  const loadPendingBookings = async () => {
+    try {
+      const pending = await getStudentPendingBookings(user.uid);
+      setPendingBookings(pending);
+    } catch (error) {
+      console.error("Error loading pending bookings:", error);
+    }
+  };
+
   const handleLogout = async () => {
     await logout();
     window.location.href = '/';
+  };
+
+  const handlePayment = async (booking: any) => {
+    setSelectedBooking(booking);
+    setShowPaymentModal(true);
+  };
+
+  const processPayment = async () => {
+    if (!selectedBooking) return;
+
+    setPaymentLoading(true);
+
+    try {
+      // Create payment reference
+      const paymentReference = `PAY-${Date.now()}-${user.uid.slice(0, 8)}`;
+      
+      // Initialize Paystack payment
+      initializePayment({
+        email: user.email || userData.email,
+        amount: selectedBooking.totalAmount * 100, // Convert to kobo
+        reference: paymentReference,
+        metadata: {
+          userId: user.uid,
+          bookingId: selectedBooking.id,
+          tutorId: selectedBooking.tutorId,
+          tutorName: selectedBooking.tutorName,
+          studentName: `${userData.firstName} ${userData.lastName}`,
+          subject: selectedBooking.subject,
+          hours: selectedBooking.totalHours,
+          hourlyRate: selectedBooking.hourlyRate,
+          totalAmount: selectedBooking.totalAmount,
+          bookingType: 'tutor_session',
+        },
+        callback: async (response: any) => {
+          console.log("Payment response:", response);
+          
+          if (response.status === 'success' || response.message === 'Approved') {
+            try {
+              // Create payment record in database
+              const paymentData = {
+                bookingId: selectedBooking.id,
+                userId: user.uid,
+                userEmail: user.email || userData.email,
+                tutorId: selectedBooking.tutorId,
+                tutorName: selectedBooking.tutorName,
+                studentName: `${userData.firstName} ${userData.lastName}`,
+                amount: selectedBooking.totalAmount,
+                reference: paymentReference,
+                paystackReference: response.reference || response.trxref,
+                status: 'completed',
+                paymentMethod: 'paystack',
+                metadata: {
+                  subject: selectedBooking.subject,
+                  hours: selectedBooking.totalHours,
+                  hourlyRate: selectedBooking.hourlyRate,
+                  totalAmount: selectedBooking.totalAmount,
+                },
+                paymentDate: new Date().toISOString(),
+              };
+
+              await createPayment(paymentData);
+
+              // Update booking status
+              await updateBookingStatus(selectedBooking.id, 'confirmed', {
+                paymentStatus: 'completed',
+                paymentReference: paymentReference,
+                paidAt: new Date().toISOString(),
+              });
+
+              toast.success("Payment successful! Your booking is now confirmed.");
+              
+              // Update local state
+              setBookings(prev => prev.map(b => 
+                b.id === selectedBooking.id 
+                  ? { ...b, status: 'confirmed', paymentStatus: 'completed' }
+                  : b
+              ));
+              
+              setPendingBookings(prev => prev.filter(b => b.id !== selectedBooking.id));
+
+              // Close modal
+              setShowPaymentModal(false);
+              setSelectedBooking(null);
+              
+              // Refresh dashboard data
+              loadDashboardData();
+
+            } catch (error: any) {
+              console.error('Error updating after payment:', error);
+              toast.error(`Error updating booking: ${error.message}`);
+            }
+          } else {
+            toast.error("Payment was not successful. Please try again.");
+          }
+          setPaymentLoading(false);
+        },
+        onClose: () => {
+          console.log("Payment window closed");
+          setPaymentLoading(false);
+        },
+      });
+
+    } catch (error: any) {
+      console.error('Error processing payment:', error);
+      toast.error(`Payment error: ${error.message}`);
+      setPaymentLoading(false);
+    }
+  };
+
+  const cancelBooking = async (bookingId: string) => {
+    if (!confirm("Are you sure you want to cancel this booking?")) return;
+
+    try {
+      await updateBookingStatus(bookingId, 'cancelled');
+      
+      toast.success("Booking cancelled successfully");
+      
+      // Update local state
+      setBookings(prev => prev.map(b => 
+        b.id === bookingId ? { ...b, status: 'cancelled' } : b
+      ));
+      
+      setPendingBookings(prev => prev.filter(b => b.id !== bookingId));
+
+    } catch (error: any) {
+      console.error('Error cancelling booking:', error);
+      toast.error(`Failed to cancel booking: ${error.message}`);
+    }
+  };
+
+  const handleBookTutor = () => {
+    window.location.href = '/tutors';
   };
 
   // Helper function to safely format dates
@@ -728,6 +890,76 @@ export default function DashboardPage() {
         </div>
       </div>
 
+      {/* Pending Payments Section */}
+      {pendingBookings.length > 0 && (
+        <Card className="border-2 mb-6" style={{ borderColor: '#e6941f' }}>
+          <CardHeader>
+            <CardTitle className="flex items-center" style={{ color: '#073045' }}>
+              <AlertCircle className="h-5 w-5 mr-2" style={{ color: '#e6941f' }} />
+              Pending Payments ({pendingBookings.length})
+            </CardTitle>
+            <CardDescription>Complete payment to confirm your bookings</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {pendingBookings.slice(0, 3).map((booking) => (
+                <div 
+                  key={booking.id} 
+                  className="flex items-center justify-between p-4 border-2 rounded-lg bg-yellow-50"
+                  style={{ borderColor: '#e6941f' }}
+                >
+                  <div className="flex items-center space-x-4">
+                    <Avatar className="h-12 w-12 border-2" style={{ borderColor: '#1d636c' }}>
+                      <AvatarFallback className="text-white" style={{ backgroundColor: '#1d636c' }}>
+                        {booking.tutorName?.charAt(0) || "T"}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div>
+                      <p className="font-semibold" style={{ color: '#073045' }}>
+                        {booking.tutorName}
+                      </p>
+                      <div className="flex items-center gap-2 mt-1">
+                        <Badge style={{ backgroundColor: '#1d636c', color: 'white' }}>
+                          {booking.subject}
+                        </Badge>
+                        <span className="text-sm text-gray-600">
+                          {booking.totalHours} hours
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="text-right space-y-2">
+                    <p className="text-xl font-bold" style={{ color: '#073045' }}>
+                      ₦{booking.totalAmount?.toLocaleString()}
+                    </p>
+                    <Button 
+                      size="sm"
+                      onClick={() => handlePayment(booking)}
+                      style={{ backgroundColor: '#e6941f', color: '#073045' }}
+                    >
+                      <CreditCard className="h-4 w-4 mr-2" />
+                      Pay Now
+                    </Button>
+                  </div>
+                </div>
+              ))}
+              {pendingBookings.length > 3 && (
+                <div className="text-center pt-4">
+                  <Button 
+                    variant="outline"
+                    onClick={() => setActiveTab('bookings')}
+                    className="border-2"
+                    style={{ borderColor: '#1d636c', color: '#1d636c' }}
+                  >
+                    View All Pending Payments ({pendingBookings.length})
+                  </Button>
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Stats Cards */}
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
         <Card className="border-2 hover:shadow-xl transition-all duration-300 hover:-translate-y-1" style={{ borderColor: '#1d636c' }}>
@@ -915,7 +1147,7 @@ export default function DashboardPage() {
                   <div className="flex items-center space-x-3">
                     <Avatar className="h-10 w-10 border-2" style={{ borderColor: '#1d636c' }}>
                       <AvatarFallback className="text-white" style={{ backgroundColor: '#1d636c' }}>
-                        {tutor.name?.split(' ').map(n => n[0]).join('')}
+                        {tutor.name.split(' ').map(n => n[0]).join('')}
                       </AvatarFallback>
                     </Avatar>
                     <div>
@@ -1049,7 +1281,7 @@ export default function DashboardPage() {
               variant="outline"
               className="h-auto py-6 border-2 hover:border-[#1d636c] transition-all duration-300 hover:-translate-y-1 cursor-pointer group"
               style={{ borderColor: '#e5e7eb', color: '#073045' }}
-              onClick={() => window.location.href = '/tutors'}
+              onClick={handleBookTutor}
             >
               <div className="flex items-center space-x-3">
                 <div className="p-2 rounded-lg" style={{ backgroundColor: '#1d636c' }}>
@@ -1066,7 +1298,7 @@ export default function DashboardPage() {
               variant="outline"
               className="h-auto py-6 border-2 hover:border-[#e6941f] transition-all duration-300 hover:-translate-y-1 cursor-pointer group"
               style={{ borderColor: '#e5e7eb', color: '#073045' }}
-              onClick={() => setActiveTab('bookings')}
+              onClick={handleBookTutor}
             >
               <div className="flex items-center space-x-3">
                 <div className="p-2 rounded-lg" style={{ backgroundColor: '#e6941f' }}>
@@ -1117,6 +1349,485 @@ export default function DashboardPage() {
       </Card>
     </>
   );
+
+  const renderStudentBookings = () => (
+    <div className="space-y-6">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold" style={{ color: '#073045' }}>Bookings</h1>
+          <p className="text-gray-600">Manage your child's tutoring sessions</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Button 
+            size="sm"
+            style={{ backgroundColor: '#1d636c', color: 'white' }}
+            onClick={handleBookTutor}
+          >
+            <Plus className="h-4 w-4 mr-2" />
+            Book New Session
+          </Button>
+        </div>
+      </div>
+
+      {/* Pending Payments Section */}
+      {pendingBookings.length > 0 && (
+        <Card className="border-2 mb-8" style={{ borderColor: '#e6941f' }}>
+          <CardHeader>
+            <CardTitle className="flex items-center" style={{ color: '#073045' }}>
+              <AlertCircle className="h-5 w-5 mr-2" style={{ color: '#e6941f' }} />
+              Pending Payments ({pendingBookings.length})
+            </CardTitle>
+            <CardDescription>Complete payment to confirm these bookings</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {pendingBookings.map((booking) => (
+                <div 
+                  key={booking.id} 
+                  className="flex flex-col md:flex-row md:items-center justify-between p-6 border-2 rounded-lg bg-yellow-50"
+                  style={{ borderColor: '#e6941f' }}
+                >
+                  <div className="flex items-start md:items-center space-x-4">
+                    <Avatar className="h-14 w-14 border-2" style={{ borderColor: '#1d636c' }}>
+                      <AvatarFallback className="text-lg" style={{ backgroundColor: '#1d636c', color: 'white' }}>
+                        {booking.tutorName?.charAt(0) || "T"}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div>
+                      <p className="font-semibold text-lg" style={{ color: '#073045' }}>
+                        {booking.tutorName}
+                      </p>
+                      <div className="flex flex-wrap gap-2 mt-2">
+                        <Badge style={{ backgroundColor: '#1d636c', color: 'white' }}>
+                          {booking.subject}
+                        </Badge>
+                        <Badge style={{ backgroundColor: '#e6941f', color: '#073045' }}>
+                          {booking.totalHours} hours
+                        </Badge>
+                        <span className="text-sm text-gray-600">
+                          Hourly Rate: ₦{booking.hourlyRate?.toLocaleString()}
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="mt-4 md:mt-0 md:text-right space-y-3">
+                    <div>
+                      <p className="text-2xl font-bold" style={{ color: '#073045' }}>
+                        ₦{booking.totalAmount?.toLocaleString()}
+                      </p>
+                      <p className="text-sm text-gray-600">
+                        {booking.totalHours} hours × ₦{booking.hourlyRate?.toLocaleString()}/hour
+                      </p>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button 
+                        size="sm"
+                        onClick={() => handlePayment(booking)}
+                        style={{ backgroundColor: '#e6941f', color: '#073045' }}
+                      >
+                        <CreditCard className="h-4 w-4 mr-2" />
+                        Pay Now
+                      </Button>
+                      <Button 
+                        variant="outline" 
+                        size="sm"
+                        onClick={() => cancelBooking(booking.id)}
+                        className="border-red-200 text-red-600 hover:bg-red-50"
+                      >
+                        <X className="h-4 w-4 mr-2" />
+                        Cancel
+                      </Button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      <div className="grid gap-6">
+        {/* Confirmed Bookings */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center">
+              <CheckCircle className="h-5 w-5 mr-2" style={{ color: '#10b981' }} />
+              Confirmed Sessions
+            </CardTitle>
+            <CardDescription>Upcoming and ongoing tutoring sessions</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {bookings
+                .filter(b => b.status === 'confirmed' || b.status === 'active')
+                .slice(0, 5)
+                .map((booking) => (
+                <div key={booking.id} className="flex items-center justify-between p-4 border rounded-lg">
+                  <div className="flex items-center space-x-4">
+                    <div className="p-3 rounded-lg" style={{ backgroundColor: '#1d636c' }}>
+                      <Calendar className="h-6 w-6 text-white" />
+                    </div>
+                    <div>
+                      <p className="font-semibold">{booking.tutorName}</p>
+                      <p className="text-sm text-gray-600">{booking.subject}</p>
+                      <div className="flex items-center gap-4 mt-1">
+                        {booking.sessionDate && (
+                          <span className="text-sm">{safeFormatDate(booking.sessionDate)}</span>
+                        )}
+                        {booking.sessionTime && (
+                          <span className="text-sm">{booking.sessionTime}</span>
+                        )}
+                        <Badge style={{ backgroundColor: '#e6941f', color: '#073045' }}>
+                          ₦{booking.amount?.toLocaleString() || booking.totalAmount?.toLocaleString()}
+                        </Badge>
+                        {booking.totalHours && (
+                          <span className="text-sm text-gray-600">
+                            {booking.totalHours} hours
+                          </span>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <Button variant="outline" size="sm">
+                      <Video className="h-4 w-4 mr-2" />
+                      Join
+                    </Button>
+                    <Button variant="ghost" size="sm">
+                      <MessageSquare className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+              {bookings.filter(b => b.status === 'confirmed' || b.status === 'active').length === 0 && (
+                <div className="text-center py-8">
+                  <Calendar className="h-12 w-12 mx-auto mb-4" style={{ color: '#1d636c' }} />
+                  <p className="text-gray-600">No confirmed sessions</p>
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Completed Sessions */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="flex items-center">
+              <BookCheck className="h-5 w-5 mr-2" style={{ color: '#1d636c' }} />
+              Completed Sessions
+            </CardTitle>
+            <CardDescription>Past completed tutoring sessions</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="space-y-4">
+              {bookings
+                .filter(b => b.status === 'completed')
+                .slice(0, 5)
+                .map((booking) => (
+                <div key={booking.id} className="flex items-center justify-between p-4 border rounded-lg">
+                  <div className="flex items-center space-x-4">
+                    <Avatar className="h-10 w-10">
+                      <AvatarFallback>{booking.tutorName?.charAt(0)}</AvatarFallback>
+                    </Avatar>
+                    <div>
+                      <p className="font-semibold">{booking.tutorName}</p>
+                      <p className="text-sm text-gray-600">{booking.subject}</p>
+                      {booking.sessionDate && (
+                        <p className="text-xs text-gray-500">
+                          Completed on {safeFormatDate(booking.sessionDate)}
+                        </p>
+                      )}
+                      {booking.totalHours && (
+                        <p className="text-xs text-gray-500 mt-1">
+                          {booking.totalHours} hours completed
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="text-right">
+                    <p className="font-semibold">₦{booking.amount?.toLocaleString() || booking.totalAmount?.toLocaleString()}</p>
+                    <Badge className="bg-green-100 text-green-800">Completed</Badge>
+                  </div>
+                </div>
+              ))}
+              {bookings.filter(b => b.status === 'completed').length === 0 && (
+                <div className="text-center py-8">
+                  <BookCheck className="h-12 w-12 mx-auto mb-4" style={{ color: '#1d636c' }} />
+                  <p className="text-gray-600">No completed sessions yet</p>
+                </div>
+              )}
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+    </div>
+  );
+
+  const renderStudentPayments = () => (
+    <div className="space-y-6">
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
+        <div>
+          <h1 className="text-3xl font-bold" style={{ color: '#073045' }}>Payments</h1>
+          <p className="text-gray-600">Manage your tutoring payments</p>
+        </div>
+        <Button 
+          size="sm"
+          style={{ backgroundColor: '#1d636c', color: 'white' }}
+        >
+          <CreditCard className="h-4 w-4 mr-2" />
+          Add Payment Method
+        </Button>
+      </div>
+
+      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between mb-4">
+              <div className="p-2 rounded-lg" style={{ backgroundColor: '#1d636c' }}>
+                <DollarSign className="h-5 w-5 text-white" />
+              </div>
+              <Badge className="bg-green-100 text-green-800">
+                Updated
+              </Badge>
+            </div>
+            <div>
+              <p className="text-sm text-gray-600 mb-1">Total Spent</p>
+              <p className="text-2xl font-bold" style={{ color: '#073045' }}>
+                ₦{stats?.totalSpent?.toLocaleString() || '0'}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between mb-4">
+              <div className="p-2 rounded-lg" style={{ backgroundColor: '#e6941f' }}>
+                <Calendar className="h-5 w-5 text-white" />
+              </div>
+              <Badge className="bg-blue-100 text-blue-800">
+                This Month
+              </Badge>
+            </div>
+            <div>
+              <p className="text-sm text-gray-600 mb-1">This Month</p>
+              <p className="text-2xl font-bold" style={{ color: '#073045' }}>
+                ₦{(stats?.totalSpent * 0.3 || 0).toLocaleString()}
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardContent className="pt-6">
+            <div className="flex items-center justify-between mb-4">
+              <div className="p-2 rounded-lg" style={{ backgroundColor: '#073045' }}>
+                <Clock className="h-5 w-5 text-white" />
+              </div>
+              <Badge className="bg-yellow-100 text-yellow-800">
+                Pending
+              </Badge>
+            </div>
+            <div>
+              <p className="text-sm text-gray-600 mb-1">Upcoming Payments</p>
+              <p className="text-2xl font-bold" style={{ color: '#073045' }}>
+                ₦{pendingBookings.reduce((sum, b) => sum + (b.totalAmount || 0), 0).toLocaleString()}
+              </p>
+              <p className="text-xs text-gray-600 mt-1">
+                {pendingBookings.length} pending bookings
+              </p>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <Card>
+        <CardHeader>
+          <CardTitle>Payment History</CardTitle>
+          <CardDescription>Recent payments for tutoring</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="space-y-4">
+            {bookings
+              .filter(b => b.status === 'completed' || b.status === 'confirmed')
+              .slice(0, 10)
+              .map((booking) => (
+              <div key={booking.id} className="flex items-center justify-between p-4 border rounded-lg">
+                <div className="flex items-center space-x-4">
+                  <div className={`p-2 rounded-lg ${booking.status === 'completed' ? 'bg-green-100' : 'bg-blue-100'}`}>
+                    <DollarSign className={`h-5 w-5 ${booking.status === 'completed' ? 'text-green-800' : 'text-blue-800'}`} />
+                  </div>
+                  <div>
+                    <p className="font-semibold">{booking.tutorName}</p>
+                    <p className="text-sm text-gray-600">{booking.subject}</p>
+                    {booking.sessionDate && (
+                      <p className="text-xs text-gray-500">
+                        {safeFormatDate(booking.sessionDate)}
+                      </p>
+                    )}
+                    {booking.totalHours && (
+                      <p className="text-xs text-gray-500">
+                        {booking.totalHours} hours
+                      </p>
+                    )}
+                  </div>
+                </div>
+                <div className="text-right">
+                  <p className="font-semibold">₦{booking.amount?.toLocaleString() || booking.totalAmount?.toLocaleString()}</p>
+                  <Badge className={booking.status === 'completed' ? 'bg-green-100 text-green-800' : 'bg-blue-100 text-blue-800'}>
+                    {booking.status === 'completed' ? 'Paid' : 'Pending'}
+                  </Badge>
+                </div>
+              </div>
+            ))}
+          </div>
+        </CardContent>
+      </Card>
+    </div>
+  );
+
+  // Payment Modal
+  const PaymentModal = () => {
+    if (!selectedBooking) return null;
+
+    return (
+      <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50 p-4">
+        <div className="bg-white rounded-2xl max-w-md w-full max-h-[90vh] overflow-y-auto">
+          <div className="p-6">
+            <div className="flex items-center justify-between mb-6">
+              <h3 className="text-xl font-bold" style={{ color: '#073045' }}>Complete Payment</h3>
+              <button 
+                onClick={() => setShowPaymentModal(false)}
+                className="p-2 hover:bg-gray-100 rounded-lg"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <div className="space-y-6">
+              {/* Booking Summary */}
+              <div className="space-y-4">
+                <div className="flex items-center space-x-4 p-4 bg-gray-50 rounded-lg">
+                  <Avatar className="h-12 w-12 border-2" style={{ borderColor: '#1d636c' }}>
+                    <AvatarFallback className="text-white" style={{ backgroundColor: '#1d636c' }}>
+                      {selectedBooking.tutorName?.charAt(0) || "T"}
+                    </AvatarFallback>
+                  </Avatar>
+                  <div>
+                    <p className="font-semibold" style={{ color: '#073045' }}>
+                      {selectedBooking.tutorName}
+                    </p>
+                    <Badge style={{ backgroundColor: '#e6941f', color: '#073045' }}>
+                      {selectedBooking.subject}
+                    </Badge>
+                  </div>
+                </div>
+
+                {/* Cost Breakdown */}
+                <div className="space-y-3 p-4 border-2 rounded-lg" style={{ borderColor: '#e5e7eb' }}>
+                  <h4 className="font-semibold" style={{ color: '#073045' }}>Cost Breakdown</h4>
+                  <div className="space-y-2">
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Hourly Rate:</span>
+                      <span className="font-medium">₦{selectedBooking.hourlyRate?.toLocaleString()}</span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span className="text-gray-600">Hours:</span>
+                      <span className="font-medium">{selectedBooking.totalHours} hours</span>
+                    </div>
+                    <div className="border-t pt-2 flex justify-between">
+                      <span className="font-semibold" style={{ color: '#073045' }}>Total Amount:</span>
+                      <span className="text-xl font-bold" style={{ color: '#e6941f' }}>
+                        ₦{selectedBooking.totalAmount?.toLocaleString()}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Payment Methods */}
+                <div className="space-y-3">
+                  <h4 className="font-semibold" style={{ color: '#073045' }}>Payment Method</h4>
+                  <div className="grid gap-3">
+                    <button 
+                      onClick={processPayment}
+                      disabled={paymentLoading}
+                      className="flex items-center justify-between p-4 border-2 rounded-lg hover:border-[#1d636c] transition-colors"
+                      style={{ borderColor: '#e5e7eb' }}
+                    >
+                      <div className="flex items-center space-x-3">
+                        <div className="w-10 h-10 rounded-lg bg-green-100 flex items-center justify-center">
+                          <CreditCard className="h-5 w-5 text-green-800" />
+                        </div>
+                        <div className="text-left">
+                          <p className="font-semibold">Paystack</p>
+                          <p className="text-sm text-gray-600">Card, Bank Transfer, USSD</p>
+                        </div>
+                      </div>
+                      {paymentLoading && (
+                        <Loader2 className="h-5 w-5 animate-spin" style={{ color: '#1d636c' }} />
+                      )}
+                    </button>
+                  </div>
+                </div>
+
+                {/* Security Note */}
+                <div className="bg-blue-50 p-4 rounded-lg border border-blue-100">
+                  <div className="flex items-start space-x-3">
+                    <Shield className="h-5 w-5 flex-shrink-0" style={{ color: '#1d636c' }} />
+                    <div>
+                      <p className="text-sm font-medium text-blue-900">Secure Payment</p>
+                      <p className="text-xs text-blue-700 mt-1">
+                        Your payment is processed securely through Paystack. We never store your card details.
+                      </p>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              {/* Action Buttons */}
+              <div className="flex gap-3 pt-4">
+                <Button 
+                  variant="outline" 
+                  className="flex-1 border-2"
+                  style={{ borderColor: '#1d636c', color: '#1d636c' }}
+                  onClick={() => setShowPaymentModal(false)}
+                  disabled={paymentLoading}
+                >
+                  Cancel
+                </Button>
+                <Button 
+                  className="flex-1 hover:opacity-90"
+                  onClick={processPayment}
+                  disabled={paymentLoading}
+                  style={{ backgroundColor: '#e6941f', color: '#073045' }}
+                >
+                  {paymentLoading ? (
+                    <>
+                      <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                      Processing...
+                    </>
+                  ) : (
+                    <>
+                      <CreditCard className="h-4 w-4 mr-2" />
+                      Pay ₦{selectedBooking.totalAmount?.toLocaleString()}
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  
+  
+  
+
+  
+
+ 
 
   const renderTutorBookings = () => (
     <div className="space-y-6">
@@ -1215,103 +1926,7 @@ export default function DashboardPage() {
     </div>
   );
 
-  const renderStudentBookings = () => (
-    <div className="space-y-6">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold" style={{ color: '#073045' }}>Bookings</h1>
-          <p className="text-gray-600">Manage your child's tutoring sessions</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Button variant="outline" size="sm">
-            <Filter className="h-4 w-4 mr-2" />
-            Filter
-          </Button>
-          <Button 
-            size="sm"
-            style={{ backgroundColor: '#1d636c', color: 'white' }}
-            onClick={() => window.location.href = '/tutors'}
-          >
-            <Plus className="h-4 w-4 mr-2" />
-            Book New Session
-          </Button>
-        </div>
-      </div>
 
-      <div className="grid gap-6">
-        <Card>
-          <CardHeader>
-            <CardTitle>Upcoming Sessions</CardTitle>
-            <CardDescription>Confirmed tutoring sessions</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {bookings.filter(b => b.status === 'confirmed').slice(0, 5).map((booking) => (
-                <div key={booking.id} className="flex items-center justify-between p-4 border rounded-lg">
-                  <div className="flex items-center space-x-4">
-                    <div className="p-3 rounded-lg" style={{ backgroundColor: '#1d636c' }}>
-                      <Calendar className="h-6 w-6 text-white" />
-                    </div>
-                    <div>
-                      <p className="font-semibold">{booking.tutorName}</p>
-                      <p className="text-sm text-gray-600">{booking.subject}</p>
-                      <div className="flex items-center gap-4 mt-1">
-                        <span className="text-sm">{safeFormatDate(booking.sessionDate)}</span>
-                        <span className="text-sm">{booking.sessionTime}</span>
-                        <Badge style={{ backgroundColor: '#e6941f', color: '#073045' }}>
-                          ₦{booking.amount?.toLocaleString()}
-                        </Badge>
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    <Button variant="outline" size="sm">
-                      <Video className="h-4 w-4 mr-2" />
-                      Join
-                    </Button>
-                    <Button variant="ghost" size="sm">
-                      <Edit className="h-4 w-4" />
-                    </Button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardHeader>
-            <CardTitle>Session History</CardTitle>
-            <CardDescription>Past completed sessions</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <div className="space-y-4">
-              {bookings.filter(b => b.status === 'completed').slice(0, 5).map((booking) => (
-                <div key={booking.id} className="flex items-center justify-between p-4 border rounded-lg">
-                  <div className="flex items-center space-x-4">
-                    <Avatar className="h-10 w-10">
-                      <AvatarFallback>{booking.tutorName?.charAt(0)}</AvatarFallback>
-                    </Avatar>
-                    <div>
-                      <p className="font-semibold">{booking.tutorName}</p>
-                      <p className="text-sm text-gray-600">{booking.subject}</p>
-                      <p className="text-xs text-gray-500">
-                        Completed on {safeFormatDate(booking.sessionDate)}
-                      </p>
-                    </div>
-                  </div>
-                  <div className="text-right">
-                    <p className="font-semibold">₦{booking.amount?.toLocaleString()}</p>
-                    <Badge className="bg-green-100 text-green-800">Completed</Badge>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-    </div>
-  );
 
   const renderTutorStudents = () => (
     <div className="space-y-6">
@@ -1566,100 +2181,7 @@ export default function DashboardPage() {
     </div>
   );
 
-  const renderStudentPayments = () => (
-    <div className="space-y-6">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div>
-          <h1 className="text-3xl font-bold" style={{ color: '#073045' }}>Payments</h1>
-          <p className="text-gray-600">Manage your tutoring payments</p>
-        </div>
-        <Button 
-          size="sm"
-          style={{ backgroundColor: '#1d636c', color: 'white' }}
-        >
-          <CreditCard className="h-4 w-4 mr-2" />
-          Add Payment Method
-        </Button>
-      </div>
-
-      <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="p-2 rounded-lg" style={{ backgroundColor: '#1d636c' }}>
-                <DollarSign className="h-5 w-5 text-white" />
-              </div>
-              <Badge className="bg-green-100 text-green-800">
-                Updated
-              </Badge>
-            </div>
-            <p className="text-sm text-gray-600">Total Spent</p>
-            <p className="text-2xl font-bold">₦{stats?.totalSpent?.toLocaleString() || '0'}</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="p-2 rounded-lg" style={{ backgroundColor: '#e6941f' }}>
-                <Calendar className="h-5 w-5 text-white" />
-              </div>
-              <Badge className="bg-blue-100 text-blue-800">
-                This Month
-              </Badge>
-            </div>
-            <p className="text-sm text-gray-600">This Month</p>
-            <p className="text-2xl font-bold">₦{(stats?.totalSpent * 0.3 || 0).toLocaleString()}</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="p-2 rounded-lg" style={{ backgroundColor: '#073045' }}>
-                <Clock className="h-5 w-5 text-white" />
-              </div>
-              <Badge className="bg-yellow-100 text-yellow-800">
-                Pending
-              </Badge>
-            </div>
-            <p className="text-sm text-gray-600">Upcoming Payments</p>
-            <p className="text-2xl font-bold">₦{(stats?.totalSpent * 0.1 || 0).toLocaleString()}</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Payment History</CardTitle>
-          <CardDescription>Recent payments for tutoring</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            {bookings.slice(0, 10).map((booking) => (
-              <div key={booking.id} className="flex items-center justify-between p-4 border rounded-lg">
-                <div className="flex items-center space-x-4">
-                  <div className={`p-2 rounded-lg ${booking.status === 'completed' ? 'bg-green-100' : 'bg-yellow-100'}`}>
-                    <DollarSign className={`h-5 w-5 ${booking.status === 'completed' ? 'text-green-800' : 'text-yellow-800'}`} />
-                  </div>
-                  <div>
-                    <p className="font-semibold">{booking.tutorName}</p>
-                    <p className="text-sm text-gray-600">{booking.subject} • {safeFormatDate(booking.sessionDate)}</p>
-                  </div>
-                </div>
-                <div className="text-right">
-                  <p className="font-semibold">₦{booking.amount?.toLocaleString()}</p>
-                  <Badge className={booking.status === 'completed' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}>
-                    {booking.status}
-                  </Badge>
-                </div>
-              </div>
-            ))}
-          </div>
-        </CardContent>
-      </Card>
-    </div>
-  );
+ 
 
   const renderTutorSchedule = () => (
     <div className="space-y-6">
@@ -2194,6 +2716,8 @@ export default function DashboardPage() {
       </Card>
     </div>
   );
+  
+
 
   if (loading) {
     return (
@@ -2239,7 +2763,7 @@ export default function DashboardPage() {
             <button className="relative p-2 hover:bg-gray-100 rounded-lg">
               <Bell className="h-5 w-5" style={{ color: '#073045' }} />
               <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">
-                3
+                {pendingBookings.length}
               </span>
             </button>
             
@@ -2336,6 +2860,11 @@ export default function DashboardPage() {
                   >
                     <Calendar className="h-5 w-5" />
                     <span className="font-medium">Bookings</span>
+                    {userData.role === 'student' && pendingBookings.length > 0 && (
+                      <Badge className="ml-auto" style={{ backgroundColor: '#e6941f', color: '#073045' }}>
+                        {pendingBookings.length}
+                      </Badge>
+                    )}
                   </button>
                   
                   {userData.role === 'tutor' ? (
@@ -2362,18 +2891,6 @@ export default function DashboardPage() {
                       >
                         <DollarSign className="h-5 w-5" />
                         <span className="font-medium">Earnings</span>
-                      </button>
-                      
-                      <button 
-                        onClick={() => setActiveTab('schedule')}
-                        className={`flex items-center space-x-3 px-3 py-2.5 rounded-lg transition-all w-full text-left ${
-                          activeTab === 'schedule' 
-                            ? 'bg-[#1d636c] text-white' 
-                            : 'hover:bg-gray-50'
-                        }`}
-                      >
-                        <Clock className="h-5 w-5" />
-                        <span className="font-medium">Schedule</span>
                       </button>
                     </>
                   ) : (
@@ -2423,6 +2940,18 @@ export default function DashboardPage() {
                   <h3 className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: '#1d636c' }}>Resources</h3>
                   <nav className="space-y-1">
                     <button 
+                      onClick={() => setActiveTab('schedule')}
+                      className={`flex items-center space-x-3 px-3 py-2.5 rounded-lg transition-all w-full text-left ${
+                        activeTab === 'schedule' 
+                          ? 'bg-[#1d636c] text-white' 
+                          : 'hover:bg-gray-50'
+                      }`}
+                    >
+                      <Calendar className="h-5 w-5" />
+                      <span className="font-medium">Schedule</span>
+                    </button>
+                    
+                    <button 
                       onClick={() => setActiveTab('resources')}
                       className={`flex items-center space-x-3 px-3 py-2.5 rounded-lg transition-all w-full text-left ${
                         activeTab === 'resources' 
@@ -2431,7 +2960,7 @@ export default function DashboardPage() {
                       }`}
                     >
                       <BookOpen className="h-5 w-5" />
-                      <span className="font-medium">Teaching Resources</span>
+                      <span className="font-medium">Resources</span>
                     </button>
                     
                     <button 
@@ -2443,7 +2972,7 @@ export default function DashboardPage() {
                       }`}
                     >
                       <BarChart className="h-5 w-5" />
-                      <span className="font-medium">Performance Analytics</span>
+                      <span className="font-medium">Performance</span>
                     </button>
                   </nav>
                 </div>
@@ -2525,6 +3054,9 @@ export default function DashboardPage() {
           </div>
         </main>
       </div>
+
+      {/* Payment Modal */}
+      {showPaymentModal && <PaymentModal />}
     </div>
   );
 }

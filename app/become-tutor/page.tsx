@@ -561,10 +561,10 @@ export default function BecomeTutorPage() {
           </div>
           <nav className="hidden md:flex items-center space-x-6">
             <Link href="/tutors" className="text-sm font-medium hover:opacity-80 transition-colors" style={{ color: '#073045' }}>
-              Find Tutors
+              Find mentors
             </Link>
             <Link href="/become-tutor" className="text-sm font-medium hover:opacity-80 transition-colors" style={{ color: '#073045' }}>
-              Become a Tutor
+              Become a mentor
             </Link>
             <Link href="/about" className="text-sm font-medium hover:opacity-80 transition-colors" style={{ color: '#073045' }}>
               About
@@ -614,13 +614,13 @@ export default function BecomeTutorPage() {
               <div className="space-y-6">
                 <Badge variant="secondary" className="w-fit mx-auto lg:mx-0 px-4 py-2 text-sm font-semibold" style={{ backgroundColor: '#e6941f', color: '#073045' }}>
                   <Sparkles className="inline h-4 w-4 mr-2" />
-                  🇳🇴 Join Our Tutor Community
+                  🇳🇴 Join Our mentor Community
                 </Badge>
                 <h1 className="text-4xl font-bold tracking-tight sm:text-5xl lg:text-6xl text-white leading-tight">
                   Share Your Knowledge, <span style={{ color: '#e6941f' }}>Earn Income</span>
                 </h1>
                 <p className="text-xl text-white/90 max-w-[600px] mx-auto lg:mx-0 leading-relaxed">
-                  Turn your academic expertise into a rewarding career. Help Nigerian students excel while earning competitive income as an Edumentor tutor.
+                  Turn your academic expertise into a rewarding career. Help Nigerian students excel while earning competitive income as an Edumentor mentor.
                 </p>
               </div>
               <div className="flex flex-col sm:flex-row gap-4 justify-center lg:justify-start">
@@ -835,7 +835,7 @@ export default function BecomeTutorPage() {
           <div className="container mx-auto px-4 md:px-6 max-w-7xl">
             <div className="text-center space-y-4 mb-16">
               <h2 className="text-4xl font-bold tracking-tight" style={{ color: '#073045' }}>
-                Why Join Edumentor as a Tutor?
+                Why Join Edumentor as a mentor?
               </h2>
               <p className="text-xl text-gray-600 max-w-[800px] mx-auto">
                 Experience the benefits of teaching with Nigeria's premier educational platform
@@ -935,7 +935,7 @@ export default function BecomeTutorPage() {
               <h4 className="font-semibold text-white">For Students</h4>
               <div className="space-y-2 text-sm">
                 <Link href="/tutors" className="block text-white/80 hover:text-white transition-colors">
-                  Find Tutors
+                  Find Mentor
                 </Link>
                 <Link href="/how-it-works" className="block text-white/80 hover:text-white transition-colors">
                   How It Works
@@ -946,10 +946,10 @@ export default function BecomeTutorPage() {
               </div>
             </div>
             <div className="space-y-4">
-              <h4 className="font-semibold text-white">For Tutors</h4>
+              <h4 className="font-semibold text-white">For mentors</h4>
               <div className="space-y-2 text-sm">
                 <Link href="/become-tutor" className="block text-white/80 hover:text-white transition-colors">
-                  Join as Tutor
+                  Join as Mentor
                 </Link>
                 <Link href="/tutor-benefits" className="block text-white/80 hover:text-white transition-colors">
                   Benefits
@@ -1000,7 +1000,7 @@ function RegistrationStep({ registrationData, handleRegistrationInputChange, loa
         <div className="w-20 h-20 rounded-full flex items-center justify-center mx-auto mb-4" style={{ backgroundColor: '#e6941f' }}>
           <GraduationCap className="h-10 w-10 text-white" />
         </div>
-        <h3 className="text-2xl font-semibold" style={{ color: '#073045' }}>Create Your Tutor Account</h3>
+        <h3 className="text-2xl font-semibold" style={{ color: '#073045' }}>Create Your Mentor Account</h3>
         <p className="text-muted-foreground mt-2">
           Create an account to start your tutor application
         </p>

@@ -29,7 +29,9 @@ import {
   Heart,
   TrendingUp,
   Target,
-  ArrowLeft
+  ArrowLeft,
+  DollarSign,
+  Calculator
 } from "lucide-react"
 import Link from "next/link"
 import Image from "next/image"
@@ -37,6 +39,15 @@ import { useAuth } from "@/contexts/AuthContext"
 import { toast } from "react-hot-toast"
 import { getTutors, createBooking, checkExistingBooking } from "@/lib/firebase/firestore"
 import { useRouter } from "next/navigation"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
 
 // Badge Component
 function Badge({ variant, className, children, style }: any) {
@@ -85,6 +96,265 @@ interface Tutor {
   userId: string;
 }
 
+// Booking Dialog Props
+interface BookingDialogProps {
+  tutor: Tutor;
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  onConfirmBooking: (hours: number, totalAmount: number) => Promise<void>;
+  loading: boolean;
+}
+
+function BookingDialog({ tutor, open, onOpenChange, onConfirmBooking, loading }: BookingDialogProps) {
+  const [hours, setHours] = useState<number>(1);
+  const [selectedSubject, setSelectedSubject] = useState<string>(tutor.subjects?.[0] || "");
+  const [selectedPackage, setSelectedPackage] = useState<string>(tutor.packages?.[0] || "");
+
+  const calculateTotalAmount = () => {
+    return hours * tutor.hourlyRate;
+  };
+
+  const handleConfirm = async () => {
+    if (hours < 1) {
+      toast.error("Please select at least 1 hour");
+      return;
+    }
+    
+    if (hours > 50) {
+      toast.error("Maximum 50 hours per booking");
+      return;
+    }
+
+    const totalAmount = calculateTotalAmount();
+    await onConfirmBooking(hours, totalAmount);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <Calendar className="h-5 w-5" />
+            Book {tutor.firstName} {tutor.lastName}
+          </DialogTitle>
+          <DialogDescription>
+            Specify the hours you want to book and the total amount will be calculated automatically.
+          </DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-6 py-4">
+          {/* Tutor Info */}
+          <div className="flex items-center gap-4 p-4 bg-gray-50 rounded-lg">
+            <div className="w-12 h-12 rounded-full overflow-hidden bg-gray-200">
+              {tutor.profilePhoto ? (
+                <Image
+                  src={tutor.profilePhoto}
+                  alt={`${tutor.firstName} ${tutor.lastName}`}
+                  width={48}
+                  height={48}
+                  className="w-full h-full object-cover"
+                />
+              ) : (
+                <div className="w-full h-full flex items-center justify-center" style={{ backgroundColor: '#1d636c' }}>
+                  <GraduationCap className="h-6 w-6 text-white" />
+                </div>
+              )}
+            </div>
+            <div>
+              <h3 className="font-semibold" style={{ color: '#073045' }}>
+                {tutor.firstName} {tutor.lastName}
+              </h3>
+              <p className="text-sm text-gray-600">Hourly Rate: ₦{tutor.hourlyRate.toLocaleString()}</p>
+            </div>
+          </div>
+
+          {/* Subject Selection */}
+          {tutor.subjects && tutor.subjects.length > 0 && (
+            <div className="space-y-3">
+              <Label htmlFor="subject" style={{ color: '#073045' }}>Subject</Label>
+              <Select value={selectedSubject} onValueChange={setSelectedSubject}>
+                <SelectTrigger className="w-full border-2" style={{ borderColor: '#e5e7eb' }}>
+                  <SelectValue placeholder="Select subject" />
+                </SelectTrigger>
+                <SelectContent>
+                  {tutor.subjects.map((subject) => (
+                    <SelectItem key={subject} value={subject}>
+                      {subject}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          {/* Package Selection */}
+          {tutor.packages && tutor.packages.length > 0 && (
+            <div className="space-y-3">
+              <Label htmlFor="package" style={{ color: '#073045' }}>Package</Label>
+              <Select value={selectedPackage} onValueChange={setSelectedPackage}>
+                <SelectTrigger className="w-full border-2" style={{ borderColor: '#e5e7eb' }}>
+                  <SelectValue placeholder="Select package" />
+                </SelectTrigger>
+                <SelectContent>
+                  {tutor.packages.map((pkg) => (
+                    <SelectItem key={pkg} value={pkg}>
+                      {pkg}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          )}
+
+          {/* Hours Input */}
+          <div className="space-y-4">
+            <div className="flex justify-between items-center">
+              <Label htmlFor="hours" style={{ color: '#073045' }}>Number of Hours</Label>
+              <div className="flex items-center gap-2 text-sm text-gray-600">
+                <Calculator className="h-4 w-4" />
+                <span>₦{tutor.hourlyRate.toLocaleString()} × {hours} hour(s)</span>
+              </div>
+            </div>
+            
+            <div className="space-y-4">
+              <div className="flex items-center gap-4">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setHours(Math.max(1, hours - 1))}
+                  className="border-2"
+                  style={{ borderColor: '#1d636c', color: '#1d636c' }}
+                >
+                  -
+                </Button>
+                
+                <div className="flex-1">
+                  <Input
+                    type="number"
+                    id="hours"
+                    min="1"
+                    max="50"
+                    value={hours}
+                    onChange={(e) => setHours(Math.min(50, Math.max(1, parseInt(e.target.value) || 1)))}
+                    className="text-center text-lg border-2"
+                    style={{ borderColor: '#e5e7eb' }}
+                  />
+                </div>
+                
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setHours(Math.min(50, hours + 1))}
+                  className="border-2"
+                  style={{ borderColor: '#1d636c', color: '#1d636c' }}
+                >
+                  +
+                </Button>
+              </div>
+              
+              <Slider
+                value={[hours]}
+                min={1}
+                max={20}
+                step={1}
+                onValueChange={(value) => setHours(value[0])}
+                className="w-full"
+              />
+              
+              <div className="flex justify-between text-sm text-gray-600">
+                <span>1 hour</span>
+                <span>10 hours</span>
+                <span>20 hours</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Amount Calculation */}
+          <div className="p-4 bg-gray-50 rounded-lg space-y-2">
+            <div className="flex justify-between">
+              <span className="text-gray-600">Hourly Rate:</span>
+              <span className="font-medium">₦{tutor.hourlyRate.toLocaleString()}</span>
+            </div>
+            <div className="flex justify-between">
+              <span className="text-gray-600">Hours:</span>
+              <span className="font-medium">{hours} hour(s)</span>
+            </div>
+            <div className="border-t pt-2 flex justify-between">
+              <span className="font-semibold" style={{ color: '#073045' }}>Total Amount:</span>
+              <span className="text-xl font-bold" style={{ color: '#e6941f' }}>
+                ₦{calculateTotalAmount().toLocaleString()}
+              </span>
+            </div>
+            <p className="text-xs text-gray-500 mt-2">
+              * This amount is an estimate. The mentor will confirm the final schedule and amount.
+            </p>
+          </div>
+
+          {/* Common Hour Packages */}
+          <div>
+            <Label className="mb-2 block" style={{ color: '#073045' }}>Quick Select Hours</Label>
+            <div className="flex flex-wrap gap-2">
+              {[2, 5, 10, 20].map((hourOption) => (
+                <Button
+                  key={hourOption}
+                  type="button"
+                  variant={hours === hourOption ? "default" : "outline"}
+                  size="sm"
+                  onClick={() => setHours(hourOption)}
+                  className={hours === hourOption ? "" : "border-2"}
+                  style={
+                    hours === hourOption
+                      ? { backgroundColor: '#e6941f', color: '#073045' }
+                      : { borderColor: '#1d636c', color: '#1d636c' }
+                  }
+                >
+                  {hourOption} hours
+                  <span className="ml-1 text-xs opacity-75">
+                    (₦{(hourOption * tutor.hourlyRate).toLocaleString()})
+                  </span>
+                </Button>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <DialogFooter className="gap-2 sm:gap-0">
+          <Button
+            type="button"
+            variant="outline"
+            onClick={() => onOpenChange(false)}
+            className="border-2"
+            style={{ borderColor: '#1d636c', color: '#1d636c' }}
+          >
+            Cancel
+          </Button>
+          <Button
+            type="button"
+            onClick={handleConfirm}
+            disabled={loading}
+            className="hover:opacity-90"
+            style={{ backgroundColor: '#e6941f', color: '#073045' }}
+          >
+            {loading ? (
+              <>
+                <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                Processing...
+              </>
+            ) : (
+              <>
+                <CheckCircle className="h-4 w-4 mr-2" />
+                Confirm Interest
+              </>
+            )}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function TutorsPage() {
   const { user, userData } = useAuth();
   const router = useRouter();
@@ -94,6 +364,8 @@ export default function TutorsPage() {
   const [loading, setLoading] = useState(true);
   const [bookingLoading, setBookingLoading] = useState<string | null>(null);
   const [showAdvancedFilters, setShowAdvancedFilters] = useState(false);
+  const [selectedTutor, setSelectedTutor] = useState<Tutor | null>(null);
+  const [bookingDialogOpen, setBookingDialogOpen] = useState(false);
   
   const [filters, setFilters] = useState<Filters>({
     search: "",
@@ -198,7 +470,7 @@ export default function TutorsPage() {
       setTutors(fetchedTutors);
     } catch (error) {
       console.error("Error loading tutors:", error);
-      toast.error("Failed to load tutors. Please try again.");
+      toast.error("Failed to load mentors. Please try again.");
     } finally {
       setLoading(false);
     }
@@ -267,93 +539,99 @@ export default function TutorsPage() {
     setFilteredTutors(result);
   };
 
- const handleBookTutor = async (tutorId: string) => {
-  if (!user) {
-    toast.error("Please login to book a tutor");
-    router.push('/login');
-    return;
-  }
-
-  if (!userData) {
-    toast.error("Please complete your profile first");
-    router.push('/dashboard');
-    return;
-  }
-
-  if (userData.role !== 'student') {
-    toast.error("Only students/parents can book tutors");
-    return;
-  }
-
-  setBookingLoading(tutorId);
-
-  try {
-    // Get the tutor to book
-    const tutor = tutors.find(t => t.id === tutorId);
-    if (!tutor) {
-      throw new Error("Tutor not found");
+  const handleBookTutor = (tutor: Tutor) => {
+    if (!user) {
+      toast.error("Please login to indicate interest in a mentor");
+      router.push('/login');
+      return;
     }
 
-    // Check if student already has a booking with this tutor
-    const hasExistingBooking = await checkExistingBooking(user.uid, tutorId);
-    
-    if (hasExistingBooking) {
-      toast.error("You have already indicated interest in this tutor. Please check your bookings.");
+    if (!userData) {
+      toast.error("Please complete your profile first");
+      router.push('/dashboard');
+      return;
+    }
+
+    if (userData.role !== 'student') {
+      toast.error("Only students/parents can book mentors");
+      return;
+    }
+
+    setSelectedTutor(tutor);
+    setBookingDialogOpen(true);
+  };
+
+  const handleConfirmBooking = async (hours: number, totalAmount: number) => {
+    if (!selectedTutor) return;
+
+    setBookingLoading(selectedTutor.id);
+
+    try {
+      // Get the tutor to book
+      const tutor = selectedTutor;
+      
+      // Check if student already has a booking with this tutor
+      const hasExistingBooking = await checkExistingBooking(user!.uid, tutor.id);
+      
+      if (hasExistingBooking) {
+        toast.error("You have already indicated interest in this mentor. Please check your bookings.");
+        
+        // Optionally redirect to bookings page
+        setTimeout(() => {
+          router.push('/dashboard');
+        }, 2000);
+        return;
+      }
+
+      // Create booking/interest indication with hours and amount
+      await createBooking({
+        tutorId: tutor.id,
+        tutorName: `${tutor.firstName} ${tutor.lastName}`,
+        studentId: user!.uid,
+        studentName: `${userData.firstName} ${userData.lastName}`,
+        studentEmail: user!.email,
+        studentPhone: userData.phone,
+        status: 'pending',
+        createdAt: new Date().toISOString(),
+        subject: tutor.subjects[0] || "General",
+        package: tutor.packages[0] || "General",
+        hourlyRate: tutor.hourlyRate,
+        totalHours: hours,
+        totalAmount: totalAmount,
+        location: tutor.location,
+        teachingMode: tutor.teachingMode?.[0] || "in-person",
+        bookingDetails: {
+          hoursRequested: hours,
+          hourlyRate: tutor.hourlyRate,
+          totalAmount: totalAmount,
+          estimatedDuration: `${hours} hour(s)`,
+          notes: `Interest indicated for ${hours} hour(s) of tutoring`
+        }
+      });
+
+      toast.success(`Interest indicated successfully for ${hours} hour(s)! The mentor will contact you soon.`);
+      
+      setBookingDialogOpen(false);
+      setSelectedTutor(null);
       
       // Optionally redirect to bookings page
       setTimeout(() => {
         router.push('/dashboard');
       }, 2000);
-      return;
-    }
 
-    // Create booking/interest indication
-    await createBooking({
-      tutorId,
-      tutorName: `${tutor.firstName} ${tutor.lastName}`,
-      studentId: user.uid,
-      studentName: `${userData.firstName} ${userData.lastName}`,
-      studentEmail: user.email,
-      studentPhone: userData.phone,
-      status: 'pending',
-      createdAt: new Date().toISOString(),
-      subject: tutor.subjects[0] || "General",
-      package: tutor.packages[0] || "General",
-      hourlyRate: tutor.hourlyRate,
-      location: tutor.location,
-      teachingMode: tutor.teachingMode?.[0] || "in-person"
-    });
-
-    toast.success("Interest indicated successfully! The tutor will contact you soon.");
-    
-    // Optionally redirect to bookings page
-    setTimeout(() => {
-      router.push('/dashboard/bookings');
-    }, 2000);
-
-  } catch (error: any) {
-    console.error("Booking error:", error);
-    
-    // Check for specific error message
-    if (error.message.includes('already indicated interest')) {
-      toast.error(error.message);
+    } catch (error: any) {
+      console.error("Booking error:", error);
       
-      // Optionally disable the button for this tutor
-      const tutorElement = document.querySelector(`[data-tutor-id="${tutorId}"]`);
-      if (tutorElement) {
-        const button = tutorElement.querySelector('button');
-        if (button) {
-          button.disabled = true;
-          button.innerHTML = '<span>Already Interested</span>';
-        }
+      // Check for specific error message
+      if (error.message.includes('already indicated interest')) {
+        toast.error(error.message);
+      } else {
+        toast.error(`Failed to indicate interest: ${error.message}`);
       }
-    } else {
-      toast.error(`Failed to indicate interest: ${error.message}`);
+    } finally {
+      setBookingLoading(null);
     }
-  } finally {
-    setBookingLoading(null);
-  }
-};
+  };
 
   const resetFilters = () => {
     setFilters({
@@ -406,10 +684,10 @@ export default function TutorsPage() {
           </div>
           <nav className="hidden md:flex items-center space-x-6">
             <Link href="/tutors" className="text-sm font-medium hover:opacity-80 transition-colors" style={{ color: '#073045' }}>
-              Find Tutors
+              Find Mentors
             </Link>
             <Link href="/become-tutor" className="text-sm font-medium hover:opacity-80 transition-colors" style={{ color: '#073045' }}>
-              Become a Tutor
+              Become a Mentor
             </Link>
             <Link href="/about" className="text-sm font-medium hover:opacity-80 transition-colors" style={{ color: '#073045' }}>
               About
@@ -423,10 +701,10 @@ export default function TutorsPage() {
               </Button>
             </Link>
             {user ? (
-              userData?.role === 'tutor' || userData?.role === 'tutor_applicant' ? (
-                <Link href="/tutor-dashboard">
+              userData?.role === 'mentor' || userData?.role === 'tutor_applicant' ? (
+                <Link href="/mentor-dashboard">
                   <Button size="sm" className="text-white hover:opacity-90" style={{ backgroundColor: '#1d636c' }}>
-                    Tutor Dashboard
+                    Mentor Dashboard
                   </Button>
                 </Link>
               ) : (
@@ -462,24 +740,24 @@ export default function TutorsPage() {
                   🇳🇬 Find Your Perfect Match
                 </Badge>
                 <h1 className="text-4xl font-bold tracking-tight sm:text-5xl lg:text-6xl text-white leading-tight">
-                  Discover Expert <span style={{ color: '#e6941f' }}>Tutors</span>
+                  Discover Expert <span style={{ color: '#e6941f' }}>Mentors</span>
                 </h1>
                 <p className="text-xl text-white/90 max-w-[600px] mx-auto lg:mx-0 leading-relaxed">
-                  Browse through our verified NYSC corps members and experienced tutors. 
+                  Browse through our verified NYSC corps members and experienced mentors. 
                   Find the perfect match for your child's learning needs and goals.
                 </p>
               </div>
               <div className="flex flex-col sm:flex-row gap-4 justify-center lg:justify-start">
                 <Link href="#tutors-grid">
                   <Button size="lg" className="w-full sm:w-auto text-lg px-8 hover:opacity-90" style={{ backgroundColor: '#e6941f', color: '#073045' }}>
-                    Browse Tutors
+                    Browse Mentors
                     <ArrowRight className="ml-2 h-5 w-5" />
                   </Button>
                 </Link>
                 <div className="flex items-center justify-center lg:justify-start space-x-6 pt-4">
                   <div className="text-center">
                     <div className="text-2xl font-bold text-white">500+</div>
-                    <div className="text-sm text-white/80">Expert Tutors</div>
+                    <div className="text-sm text-white/80">Expert Mentors</div>
                   </div>
                   <div className="text-center">
                     <div className="text-2xl font-bold" style={{ color: '#e6941f' }}>4.9/5</div>
@@ -496,7 +774,7 @@ export default function TutorsPage() {
               <div className="relative rounded-2xl overflow-hidden shadow-2xl">
                 <img
                   src="https://images.unsplash.com/photo-1523050854058-8df90110c9f1?w=800&h=600&fit=crop"
-                  alt="Tutor teaching student"
+                  alt="Mentor teaching student"
                   className="w-full h-auto object-cover"
                 />
               </div>
@@ -519,10 +797,10 @@ export default function TutorsPage() {
         <div className="container mx-auto px-4 md:px-6 max-w-7xl">
           <div className="text-center space-y-4 mb-12">
             <h2 className="text-3xl font-bold tracking-tight" style={{ color: '#073045' }}>
-              Find Your Perfect Tutor
+              Find Your Perfect Mentor
             </h2>
             <p className="text-lg text-gray-600 max-w-[800px] mx-auto">
-              Filter by subject, location, experience, and more to find the ideal tutor for your needs
+              Filter by subject, location, experience, and more to find the ideal mentor for your needs
             </p>
           </div>
 
@@ -741,7 +1019,7 @@ export default function TutorsPage() {
                             style={{ accentColor: '#1d636c' }}
                           />
                           <Label htmlFor="availability" className="text-sm cursor-pointer">
-                            Show only available tutors
+                            Show only available mentors
                           </Label>
                         </div>
                       </div>
@@ -818,14 +1096,14 @@ export default function TutorsPage() {
           {/* Results Header */}
           <div className="flex justify-between items-center mb-8">
             <div>
-              <h2 className="text-2xl font-bold" style={{ color: '#073045' }}>Available Tutors</h2>
+              <h2 className="text-2xl font-bold" style={{ color: '#073045' }}>Available Mentors</h2>
               <p className="text-gray-600">
-                {loading ? "Loading..." : `${filteredTutors.length} tutors found`}
+                {loading ? "Loading..." : `${filteredTutors.length} mentors found`}
               </p>
             </div>
             {filteredTutors.length > 0 && (
               <div className="text-sm text-gray-600">
-                Showing {Math.min(filteredTutors.length, 9)} of {filteredTutors.length} tutors
+                Showing {Math.min(filteredTutors.length, 9)} of {filteredTutors.length} mentors
               </div>
             )}
           </div>
@@ -833,16 +1111,16 @@ export default function TutorsPage() {
           {loading ? (
             <div className="flex flex-col items-center justify-center py-20">
               <Loader2 className="h-12 w-12 animate-spin mb-4" style={{ color: '#1d636c' }} />
-              <p className="text-gray-600">Loading tutors...</p>
+              <p className="text-gray-600">Loading mentors...</p>
             </div>
           ) : filteredTutors.length > 0 ? (
             <>
               <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
                 {filteredTutors.slice(0, 9).map((tutor) => (
-                  <TutorCard 
+                  <MentorCard 
                     key={tutor.id}
                     tutor={tutor}
-                    onBookTutor={handleBookTutor}
+                    onBookMentor={handleBookTutor}
                     bookingLoading={bookingLoading}
                     isAuthenticated={!!user && userData?.role === 'student'}
                     userRole={userData?.role}
@@ -859,19 +1137,19 @@ export default function TutorsPage() {
                     className="border-2 hover:opacity-80"
                     style={{ borderColor: '#1d636c', color: '#1d636c' }}
                   >
-                    Load More Tutors (Showing 9 of {filteredTutors.length})
+                    Load More Mentors (Showing 9 of {filteredTutors.length})
                   </Button>
-                </div>
+                </div> 
               )}
             </>
           ) : (
             <div className="text-center py-20">
               <Users className="h-16 w-16 mx-auto mb-4" style={{ color: '#1d636c' }} />
-              <h3 className="text-xl font-semibold mb-2" style={{ color: '#073045' }}>No tutors found</h3>
+              <h3 className="text-xl font-semibold mb-2" style={{ color: '#073045' }}>No mentors found</h3>
               <p className="text-gray-600 mb-6">
                 {tutors.length === 0 
-                  ? "No tutors are currently available. Please check back later."
-                  : "Try adjusting your filters to find more tutors."
+                  ? "No mentors are currently available. Please check back later."
+                  : "Try adjusting your filters to find more mentors."
                 }
               </p>
               {tutors.length > 0 && (
@@ -892,13 +1170,13 @@ export default function TutorsPage() {
             <div className="grid gap-6 md:grid-cols-4 text-center">
               <div>
                 <div className="text-3xl font-bold mb-2" style={{ color: '#073045' }}>{tutors.length}</div>
-                <div className="text-sm text-gray-600">Total Tutors</div>
+                <div className="text-sm text-gray-600">Total Mentors</div>
               </div>
               <div>
                 <div className="text-3xl font-bold mb-2" style={{ color: '#1d636c' }}>
                   {tutors.filter(t => t.verified).length}
                 </div>
-                <div className="text-sm text-gray-600">Verified Tutors</div>
+                <div className="text-sm text-gray-600">Verified Mentors</div>
               </div>
               <div>
                 <div className="text-3xl font-bold mb-2" style={{ color: '#e6941f' }}>
@@ -922,10 +1200,10 @@ export default function TutorsPage() {
         <div className="container mx-auto px-4 md:px-6 max-w-7xl">
           <div className="text-center space-y-4 mb-16">
             <h2 className="text-4xl font-bold tracking-tight" style={{ color: '#073045' }}>
-              How to Book a Tutor
+              How to Book a Mentor
             </h2>
             <p className="text-xl text-gray-600 max-w-[800px] mx-auto">
-              Simple steps to connect with the perfect tutor for your child
+              Simple steps to connect with the perfect mentor for your child
             </p>
           </div>
           <div className="grid gap-8 md:grid-cols-3">
@@ -934,9 +1212,9 @@ export default function TutorsPage() {
                 <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto" style={{ backgroundColor: '#1d636c' }}>
                   <span className="text-2xl font-bold text-white">1</span>
                 </div>
-                <h3 className="text-xl font-semibold" style={{ color: '#073045' }}>Find a Tutor</h3>
+                <h3 className="text-xl font-semibold" style={{ color: '#073045' }}>Find a Mentor</h3>
                 <p className="text-gray-600 leading-relaxed">
-                  Browse tutors by subject, location, and rating to find the perfect match for your child's needs.
+                  Browse mentors by subject, location, and rating to find the perfect match for your child's needs.
                 </p>
               </CardContent>
             </Card>
@@ -946,9 +1224,9 @@ export default function TutorsPage() {
                 <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto" style={{ backgroundColor: '#e6941f' }}>
                   <span className="text-2xl font-bold text-white">2</span>
                 </div>
-                <h3 className="text-xl font-semibold" style={{ color: '#073045' }}>Indicate Interest</h3>
+                <h3 className="text-xl font-semibold" style={{ color: '#073045' }}>Specify Hours</h3>
                 <p className="text-gray-600 leading-relaxed">
-                  Send an interest request to your chosen tutor with your child's details and learning goals.
+                  Choose how many hours you need. The total amount is calculated automatically based on the mentor's rate.
                 </p>
               </CardContent>
             </Card>
@@ -960,7 +1238,7 @@ export default function TutorsPage() {
                 </div>
                 <h3 className="text-xl font-semibold" style={{ color: '#073045' }}>Start Learning</h3>
                 <p className="text-gray-600 leading-relaxed">
-                  Once confirmed, begin personalized tutoring sessions and track your child's progress.
+                  Once confirmed, begin personalized mentoring sessions and track your child's progress.
                 </p>
               </CardContent>
             </Card>
@@ -981,22 +1259,22 @@ export default function TutorsPage() {
                 Ready to Start Learning?
               </h2>
               <p className="text-xl text-white/95 max-w-[800px] mx-auto leading-relaxed">
-                Join thousands of Nigerian students who have improved their grades with Edumentor's expert tutors.
+                Join thousands of Nigerian students who have improved their grades with Edumentor's expert mentors.
               </p>
             </div>
             <div className="flex flex-col sm:flex-row gap-6 justify-center">
               {user ? (
                 userData?.role === 'student' ? (
-                  <Link href="/dashboard/bookings/new">
+                  <Link href="#tutors-grid">
                     <Button size="lg" className="w-full sm:w-auto text-lg px-8 shadow-xl hover:shadow-2xl hover:-translate-y-1 transition-all" style={{ backgroundColor: '#073045', color: 'white' }}>
-                      Book Your First Session
+                      Browse Mentors Now
                       <ArrowRight className="ml-2 h-5 w-5" />
                     </Button>
                   </Link>
                 ) : (
                   <Link href="/become-tutor">
                     <Button size="lg" className="w-full sm:w-auto text-lg px-8 shadow-xl hover:shadow-2xl hover:-translate-y-1 transition-all" style={{ backgroundColor: '#073045', color: 'white' }}>
-                      Become a Tutor
+                      Become a Mentor
                       <ArrowRight className="ml-2 h-5 w-5" />
                     </Button>
                   </Link>
@@ -1021,6 +1299,17 @@ export default function TutorsPage() {
         </div>
       </section>
 
+      {/* Booking Dialog */}
+      {selectedTutor && (
+        <BookingDialog
+          tutor={selectedTutor}
+          open={bookingDialogOpen}
+          onOpenChange={setBookingDialogOpen}
+          onConfirmBooking={handleConfirmBooking}
+          loading={bookingLoading === selectedTutor.id}
+        />
+      )}
+
       {/* Footer */}
       <footer className="border-t" style={{ backgroundColor: '#073045' }}>
         <div className="container mx-auto px-4 md:px-6 py-12 max-w-7xl">
@@ -1031,14 +1320,14 @@ export default function TutorsPage() {
                 <span className="text-xl font-bold text-white">Edumentor</span>
               </div>
               <p className="text-sm text-white/80 leading-relaxed">
-                Connecting Nigerian students with qualified tutors for academic excellence.
+                Connecting Nigerian students with qualified mentors for academic excellence.
               </p>
             </div>
             <div className="space-y-4">
               <h4 className="font-semibold text-white">For Parents</h4>
               <div className="space-y-2 text-sm">
                 <Link href="/tutors" className="block text-white/80 hover:text-white transition-colors">
-                  Find Tutors
+                  Find Mentors
                 </Link>
                 <Link href="/how-it-works" className="block text-white/80 hover:text-white transition-colors">
                   How It Works
@@ -1049,10 +1338,10 @@ export default function TutorsPage() {
               </div>
             </div>
             <div className="space-y-4">
-              <h4 className="font-semibold text-white">For Tutors</h4>
+              <h4 className="font-semibold text-white">For Mentors</h4>
               <div className="space-y-2 text-sm">
                 <Link href="/become-tutor" className="block text-white/80 hover:text-white transition-colors">
-                  Join as Tutor
+                  Join as Mentor
                 </Link>
                 <Link href="/tutor-benefits" className="block text-white/80 hover:text-white transition-colors">
                   Benefits
@@ -1086,34 +1375,25 @@ export default function TutorsPage() {
   );
 }
 
-// Tutor Card Component
-// Tutor Card Component
-interface TutorCardProps {
+// Mentor Card Component
+interface MentorCardProps {
   tutor: Tutor;
-  onBookTutor: (id: string) => void;
+  onBookMentor: (tutor: Tutor) => void;
   bookingLoading: string | null;
   isAuthenticated: boolean;
   userRole?: string;
 }
 
-function TutorCard({ 
+function MentorCard({ 
   tutor, 
-  onBookTutor, 
+  onBookMentor, 
   bookingLoading,
   isAuthenticated,
   userRole
-}: TutorCardProps) {
+}: MentorCardProps) {
   const [expanded, setExpanded] = useState(false);
   const [hasExistingBooking, setHasExistingBooking] = useState(false);
   
-  // Check if user has existing booking with this tutor
-  useEffect(() => {
-    if (isAuthenticated && userRole === 'student') {
-      // This would be populated from parent component or API call
-      // For now, we'll rely on the parent component to handle this
-    }
-  }, [isAuthenticated, userRole, tutor.id]);
-
   const getExperienceColor = (experience: string) => {
     switch (experience) {
       case "5+ years": return "bg-purple-100 text-purple-800";
@@ -1124,26 +1404,35 @@ function TutorCard({
   };
 
   const handleBookClick = () => {
-    // Check if already booked before proceeding
-    if (hasExistingBooking) {
-      toast.error("You have already indicated interest in this tutor");
+    if (!tutor.isAvailable) {
+      toast.error("This mentor is not currently available");
       return;
     }
-    onBookTutor(tutor.id);
+    
+    if (!isAuthenticated) {
+      toast.error("Please login to book a mentor");
+      return;
+    }
+    
+    if (userRole !== 'student') {
+      toast.error("Only students/parents can book mentors");
+      return;
+    }
+    
+    onBookMentor(tutor);
   };
 
   const isButtonDisabled = !tutor.isAvailable || 
     bookingLoading === tutor.id || 
     !isAuthenticated || 
-    userRole !== 'student' ||
-    hasExistingBooking;
+    userRole !== 'student';
 
   const getButtonText = () => {
     if (bookingLoading === tutor.id) {
       return (
         <>
           <Loader2 className="h-3 w-3 mr-1 animate-spin" />
-          Sending...
+          Loading...
         </>
       );
     }
@@ -1156,16 +1445,10 @@ function TutorCard({
     if (userRole !== 'student') {
       return "Students Only";
     }
-    if (hasExistingBooking) {
-      return "Already Interested";
-    }
     return "Indicate Interest";
   };
 
   const getButtonStyle = () => {
-    if (hasExistingBooking) {
-      return { backgroundColor: '#6b7280', color: 'white' };
-    }
     if (!tutor.isAvailable || !isAuthenticated || userRole !== 'student') {
       return { backgroundColor: '#e5e7eb', color: '#6b7280' };
     }
@@ -1176,7 +1459,7 @@ function TutorCard({
     <Card 
       className="hover:shadow-xl transition-all duration-300 hover:-translate-y-2 border-2 h-full flex flex-col group" 
       style={{ borderColor: '#e5e7eb' }}
-      data-tutor-id={tutor.id}
+      data-mentor-id={tutor.id}
     >
       {/* Availability Badge */}
       <div className={`absolute top-4 right-4 z-10 px-3 py-1 rounded-full text-xs font-medium ${
@@ -1200,7 +1483,7 @@ function TutorCard({
                   />
                 ) : (
                   <div className="w-full h-full flex items-center justify-center" style={{ backgroundColor: '#1d636c' }}>
-                    <GraduationCap className="h-8 w-8 text-white" />
+                    <GraduationCap className="h-6 w-6 text-white" />
                   </div>
                 )}
               </div>
@@ -1236,14 +1519,18 @@ function TutorCard({
         </div>
 
         {/* Stats */}
-        <div className="grid grid-cols-2 gap-3 text-sm">
-          <div className="p-2 rounded" style={{ backgroundColor: '#f8f9fa' }}>
+        <div className="grid grid-cols-3 gap-2 text-sm">
+          <div className="p-2 rounded text-center" style={{ backgroundColor: '#f8f9fa' }}>
             <div className="text-gray-600 text-xs">Experience</div>
-            <div className="font-medium" style={{ color: '#073045' }}>{tutor.experience}</div>
+            <div className="font-medium text-xs" style={{ color: '#073045' }}>{tutor.experience}</div>
           </div>
-          <div className="p-2 rounded" style={{ backgroundColor: '#f8f9fa' }}>
-            <div className="text-gray-600 text-xs">Rate</div>
-            <div className="font-medium" style={{ color: '#073045' }}>₦{tutor.hourlyRate.toLocaleString()}/hour</div>
+          <div className="p-2 rounded text-center" style={{ backgroundColor: '#f8f9fa' }}>
+            <div className="text-gray-600 text-xs">Hourly Rate</div>
+            <div className="font-medium text-xs" style={{ color: '#073045' }}>₦{tutor.hourlyRate.toLocaleString()}</div>
+          </div>
+          <div className="p-2 rounded text-center" style={{ backgroundColor: '#f8f9fa' }}>
+            <div className="text-gray-600 text-xs">Sessions</div>
+            <div className="font-medium text-xs" style={{ color: '#073045' }}>{tutor.totalSessions}</div>
           </div>
         </div>
 
@@ -1288,15 +1575,6 @@ function TutorCard({
           </p>
         </div>
 
-        {/* Experience Badge */}
-        <div className="flex justify-center">
-          <Badge 
-            className={`px-3 py-1 text-xs font-semibold ${getExperienceColor(tutor.experience)}`}
-          >
-            {tutor.experience} Experience
-          </Badge>
-        </div>
-
         {/* Action Buttons */}
         <div className="flex gap-2 pt-2 mt-auto">
           <Link href={`/tutors/${tutor.id}`} className="flex-1">
@@ -1320,18 +1598,18 @@ function TutorCard({
           </Button>
         </div>
 
-        {/* Already Booked Indicator */}
-        {hasExistingBooking && (
-          <div className="text-center mt-2">
-            <Badge 
-              variant="outline" 
-              className="text-xs py-1 px-2 border-green-200 text-green-700 bg-green-50"
-            >
-              <CheckCircle className="h-3 w-3 mr-1 inline" />
-              Interest already indicated
-            </Badge>
+        {/* Hourly Rate Calculator */}
+        <div className="mt-4 p-3 bg-blue-50 rounded-lg border border-blue-100">
+          <p className="text-xs font-medium text-blue-900 mb-1">Calculate session cost:</p>
+          <div className="grid grid-cols-2 gap-1 text-xs">
+            <div className="text-blue-700">1 hour:</div>
+            <div className="font-semibold text-right">₦{tutor.hourlyRate.toLocaleString()}</div>
+            <div className="text-blue-700">5 hours:</div>
+            <div className="font-semibold text-right">₦{(tutor.hourlyRate * 5).toLocaleString()}</div>
+            <div className="text-blue-700">10 hours:</div>
+            <div className="font-semibold text-right">₦{(tutor.hourlyRate * 10).toLocaleString()}</div>
           </div>
-        )}
+        </div>
       </CardContent>
     </Card>
   );

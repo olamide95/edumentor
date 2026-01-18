@@ -139,7 +139,7 @@ export default function LoginPage() {
                 </div>
                 <div>
                   <h3 className="font-semibold text-lg" style={{ color: '#073045' }}>Connect with Tutors</h3>
-                  <p className="text-gray-600">Message your tutors and schedule new sessions</p>
+                  <p className="text-gray-600">Message your mentors and schedule new sessions</p>
                 </div>
               </div>
             </div>
@@ -262,7 +262,7 @@ export default function LoginPage() {
 
                     <div className="text-center p-4 rounded-lg" style={{ backgroundColor: '#fff7ed' }}>
                       <p className="text-sm text-gray-600 mb-2">
-                        Want to become a tutor?
+                        Want to become a mentor?
                       </p>
                       <Link href="/become-tutor">
                         <Button 
@@ -271,7 +271,7 @@ export default function LoginPage() {
                           style={{ borderColor: '#e6941f', color: '#e6941f' }}
                           type="button"
                         >
-                          Apply as Tutor
+                          Apply as Mentor
                         </Button>
                       </Link>
                     </div>
@@ -284,7 +284,7 @@ export default function LoginPage() {
             <div className="lg:hidden mt-8 grid grid-cols-3 gap-4 text-center">
               <div>
                 <div className="text-2xl font-bold" style={{ color: '#1d636c' }}>500+</div>
-                <div className="text-sm text-gray-600">Tutors</div>
+                <div className="text-sm text-gray-600">Mentors</div>
               </div>
               <div>
                 <div className="text-2xl font-bold" style={{ color: '#e6941f' }}>2,000+</div>

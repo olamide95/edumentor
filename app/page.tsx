@@ -25,10 +25,10 @@ export default function HomePage() {
           </div>
           <nav className="hidden md:flex items-center space-x-6">
             <Link href="/tutors" className="text-sm font-medium hover:opacity-80 transition-colors" style={{ color: '#073045' }}>
-              Find Tutors
+              Find Mentors
             </Link>
             <Link href="/become-tutor" className="text-sm font-medium hover:opacity-80 transition-colors" style={{ color: '#073045' }}>
-              Become a Tutor
+              Become a Mentor
             </Link>
             <Link href="/about" className="text-sm font-medium hover:opacity-80 transition-colors" style={{ color: '#073045' }}>
               About
@@ -66,7 +66,7 @@ export default function HomePage() {
                   Unlock Your Child's <span style={{ color: '#e6941f' }}>Academic Potential</span>
                 </h1>
                 <p className="text-xl text-white/90 max-w-[600px] mx-auto lg:mx-0 leading-relaxed">
-                  Connect with passionate, qualified tutors who understand the Nigerian educational system. 
+                  Connect with passionate, qualified mentors who understand the Nigerian educational system. 
                   From JAMB to WAEC, we're here to guide every step of your child's learning journey.
                 </p>
               </div>
@@ -79,14 +79,14 @@ export default function HomePage() {
                 </Link>
                 <Link href="/tutors">
                   <Button variant="outline" size="lg" className="w-full sm:w-auto text-lg px-8 border-2 border-white text-white hover:bg-white/10">
-                    Browse Tutors
+                    Browse Mentors
                   </Button>
                 </Link>
               </div>
               <div className="flex items-center justify-center lg:justify-start space-x-8 pt-8">
                 <div className="text-center">
                   <div className="text-3xl font-bold text-white">500+</div>
-                  <div className="text-sm text-white/80">Expert Tutors</div>
+                  <div className="text-sm text-white/80">Expert Mentors</div>
                 </div>
                 <div className="text-center">
                   <div className="text-3xl font-bold text-white">2,000+</div>
@@ -128,7 +128,7 @@ export default function HomePage() {
               Why Parents Trust Edumentor
             </h2>
             <p className="text-xl text-gray-600 max-w-[800px] mx-auto">
-              We're more than just a tutoring platform—we're your partner in your child's educational success
+              We're more than just a mentoring platform—we're your partner in your child's educational success
             </p>
           </div>
           <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-3">
@@ -139,7 +139,7 @@ export default function HomePage() {
                 </div>
                 <h3 className="text-xl font-semibold" style={{ color: '#073045' }}>Personalized Learning</h3>
                 <p className="text-gray-600 leading-relaxed">
-                  Every child learns differently. Our tutors create customized lesson plans that match your child's unique learning style and pace.
+                  Every child learns differently. Our mentors create customized lesson plans that match your child's unique learning style and pace.
                 </p>
               </CardContent>
             </Card>
@@ -149,9 +149,9 @@ export default function HomePage() {
                 <div className="w-16 h-16 rounded-full flex items-center justify-center mx-auto" style={{ backgroundColor: '#e6941f' }}>
                   <Award className="h-8 w-8 text-white" />
                 </div>
-                <h3 className="text-xl font-semibold" style={{ color: '#073045' }}>Verified Tutors</h3>
+                <h3 className="text-xl font-semibold" style={{ color: '#073045' }}>Verified Mentors</h3>
                 <p className="text-gray-600 leading-relaxed">
-                  All our tutors undergo rigorous screening and verification. Work with qualified professionals who are passionate about education.
+                  All our mentors undergo rigorous screening and verification. Work with qualified professionals who are passionate about education.
                 </p>
               </CardContent>
             </Card>
@@ -263,7 +263,7 @@ export default function HomePage() {
               Getting Started is Easy
             </h2>
             <p className="text-xl text-gray-600 max-w-[800px] mx-auto">
-              Three simple steps to connect with the perfect tutor for your child
+              Three simple steps to connect with the perfect mentor for your child
             </p>
           </div>
           <div className="grid gap-12 md:grid-cols-3">
@@ -280,9 +280,9 @@ export default function HomePage() {
               <div className="w-20 h-20 rounded-full flex items-center justify-center mx-auto shadow-lg" style={{ backgroundColor: '#e6941f' }}>
                 <span className="text-3xl font-bold text-white">2</span>
               </div>
-              <h3 className="text-2xl font-semibold" style={{ color: '#073045' }}>Match with Tutors</h3>
+              <h3 className="text-2xl font-semibold" style={{ color: '#073045' }}>Match with Mentors</h3>
               <p className="text-gray-600 leading-relaxed">
-                Browse verified tutor profiles, read reviews from other parents, and find the perfect match for your child's learning style.
+                Browse verified mentor profiles, read reviews from other parents, and find the perfect match for your child's learning style.
               </p>
             </div>
             <div className="text-center space-y-6">
@@ -318,7 +318,7 @@ export default function HomePage() {
             <div className="flex flex-col sm:flex-row gap-6 justify-center">
               <Link href="/become-tutor">
                 <Button size="lg" className="w-full sm:w-auto text-lg px-8 shadow-xl hover:shadow-2xl hover:-translate-y-1 transition-all" style={{ backgroundColor: '#073045', color: 'white' }}>
-                  Become a Tutor
+                  Become a Mentor
                   <ArrowRight className="ml-2 h-5 w-5" />
                 </Button>
               </Link>
@@ -356,14 +356,14 @@ export default function HomePage() {
                 <span className="text-xl font-bold text-white">Edumentor</span>
               </div>
               <p className="text-sm text-white/80 leading-relaxed">
-                Empowering Nigerian students to achieve academic excellence through personalized, quality tutoring.
+                Empowering Nigerian students to achieve academic excellence through personalized, quality mentoring.
               </p>
             </div>
             <div className="space-y-4">
               <h4 className="font-semibold text-white">For Parents</h4>
               <div className="space-y-2 text-sm">
                 <Link href="/tutors" className="block text-white/80 hover:text-white transition-colors">
-                  Find Tutors
+                  Find Mentors
                 </Link>
                 <Link href="/how-it-works" className="block text-white/80 hover:text-white transition-colors">
                   How It Works
@@ -374,10 +374,10 @@ export default function HomePage() {
               </div>
             </div>
             <div className="space-y-4">
-              <h4 className="font-semibold text-white">For Tutors</h4>
+              <h4 className="font-semibold text-white">For Mentors</h4>
               <div className="space-y-2 text-sm">
                 <Link href="/become-tutor" className="block text-white/80 hover:text-white transition-colors">
-                  Join as Tutor
+                  Join as Mentor
                 </Link>
                 <Link href="/tutor-benefits" className="block text-white/80 hover:text-white transition-colors">
                   Benefits
