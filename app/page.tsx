@@ -3,36 +3,53 @@
 import { Button } from "@/components/ui/button"
 import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
-import { BookOpen, Users, Award, Star, ArrowRight, CheckCircle, TrendingUp, Target, Heart, Sparkles } from "lucide-react"
-import Link from "next/link"
+import { BookOpen, Users, Award, Star, ArrowRight, CheckCircle, TrendingUp, Target, Heart, Sparkles, Mail, Phone, MapPin } from "lucide-react"
+import { useState } from "react"
 import Image from "next/image"
+import Link from "next/link";
 
 export default function HomePage() {
+  const [showAuthModal, setShowAuthModal] = useState(false);
+  const [authType, setAuthType] = useState('login');
+
+  const scrollToSection = (sectionId) => {
+    const element = document.getElementById(sectionId);
+    if (element) {
+      element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  };
+
+  const handleAuthClick = (type) => {
+    setAuthType(type);
+    setShowAuthModal(true);
+  };
+
   return (
     <div className="flex flex-col min-h-screen">
       {/* Header */}
       <header className="sticky top-0 z-50 w-full border-b bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/60">
         <div className="container mx-auto flex h-16 items-center justify-between px-4 md:px-6 max-w-7xl">
           <div className="flex items-center space-x-2">
-            <Image 
-              src="/edumentor-logo.png"
-              alt="Edumentor Logo"
-              width={32}
-              height={32}
-              className="h-8 w-8"
-            />
+            <div className="h-8 w-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: '#e6941f' }}>
+ <Image 
+    src="/edumentor-logo.png"
+    alt="Edumentor Logo"
+    width={32}
+    height={32}
+    className="h-8 w-8"
+  />            </div>
             <span className="text-2xl font-bold" style={{ color: '#073045' }}>Edumentor</span>
           </div>
-          <nav className="hidden md:flex items-center space-x-6">
+            <nav className="hidden md:flex items-center space-x-6">
             <Link href="/tutors" className="text-sm font-medium hover:opacity-80 transition-colors" style={{ color: '#073045' }}>
               Find Mentors
             </Link>
             <Link href="/become-tutor" className="text-sm font-medium hover:opacity-80 transition-colors" style={{ color: '#073045' }}>
               Become a Mentor
             </Link>
-            <Link href="/about" className="text-sm font-medium hover:opacity-80 transition-colors" style={{ color: '#073045' }}>
+            <button onClick={() => scrollToSection('about')} className="text-sm font-medium hover:opacity-80 transition-colors" style={{ color: '#073045' }}>
               About
-            </Link>
+            </button>
           </nav>
           <div className="flex items-center space-x-4">
             <Link href="/login">
@@ -49,8 +66,51 @@ export default function HomePage() {
         </div>
       </header>
 
+      {/* Auth Modal */}
+      {showAuthModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowAuthModal(false)}>
+          <div className="bg-white rounded-2xl p-8 max-w-md w-full shadow-2xl" onClick={(e) => e.stopPropagation()}>
+            <h2 className="text-3xl font-bold mb-6" style={{ color: '#073045' }}>
+              {authType === 'login' ? 'Welcome Back!' : 'Get Started'}
+            </h2>
+            <div className="space-y-4">
+              <div>
+                <label className="block text-sm font-medium mb-2" style={{ color: '#073045' }}>Email</label>
+                <input type="email" className="w-full px-4 py-2 border-2 rounded-lg focus:outline-none focus:border-opacity-80" style={{ borderColor: '#1d636c' }} placeholder="your@email.com" />
+              </div>
+              <div>
+                <label className="block text-sm font-medium mb-2" style={{ color: '#073045' }}>Password</label>
+                <input type="password" className="w-full px-4 py-2 border-2 rounded-lg focus:outline-none focus:border-opacity-80" style={{ borderColor: '#1d636c' }} placeholder="••••••••" />
+              </div>
+              {authType === 'register' && (
+                <div>
+                  <label className="block text-sm font-medium mb-2" style={{ color: '#073045' }}>I am a:</label>
+                  <select className="w-full px-4 py-2 border-2 rounded-lg focus:outline-none focus:border-opacity-80" style={{ borderColor: '#1d636c' }}>
+                    <option>Parent/Guardian</option>
+                    <option>Student</option>
+                    <option>Mentor/Tutor</option>
+                  </select>
+                </div>
+              )}
+              <Button className="w-full text-white hover:opacity-90" style={{ backgroundColor: '#1d636c' }}>
+                {authType === 'login' ? 'Login' : 'Create Account'}
+              </Button>
+              <p className="text-center text-sm text-gray-600">
+                {authType === 'login' ? "Don't have an account? " : "Already have an account? "}
+                <button onClick={() => setAuthType(authType === 'login' ? 'register' : 'login')} className="font-semibold" style={{ color: '#1d636c' }}>
+                  {authType === 'login' ? 'Sign up' : 'Login'}
+                </button>
+              </p>
+            </div>
+            <button onClick={() => setShowAuthModal(false)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600">
+              ✕
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* Hero Section */}
-      <section className="relative py-20 lg:py-32 overflow-hidden" style={{ background: 'linear-gradient(135deg, #073045 0%, #1d636c 100%)' }}>
+      <section id="home" className="relative py-20 lg:py-32 overflow-hidden" style={{ background: 'linear-gradient(135deg, #073045 0%, #1d636c 100%)' }}>
         <div className="absolute inset-0 opacity-10">
           <div className="absolute top-0 left-0 w-96 h-96 bg-white rounded-full blur-3xl"></div>
           <div className="absolute bottom-0 right-0 w-96 h-96 bg-white rounded-full blur-3xl"></div>
@@ -70,19 +130,29 @@ export default function HomePage() {
                   From JAMB to WAEC, we're here to guide every step of your child's learning journey.
                 </p>
               </div>
-              <div className="flex flex-col sm:flex-row gap-4 justify-center lg:justify-start">
-                <Link href="/register">
-                  <Button size="lg" className="w-full sm:w-auto text-lg px-8 hover:opacity-90" style={{ backgroundColor: '#e6941f', color: '#073045' }}>
-                    Start Learning Today
-                    <ArrowRight className="ml-2 h-5 w-5" />
-                  </Button>
-                </Link>
-                <Link href="/tutors">
-                  <Button variant="outline" size="lg" className="w-full sm:w-auto text-lg px-8 border-2 border-white text-white hover:bg-white/10">
-                    Browse Mentors
-                  </Button>
-                </Link>
-              </div>
+
+<div className="flex flex-col sm:flex-row gap-4 justify-center lg:justify-start">
+  <Link href="/tutors" passHref>
+    <Button 
+      size="lg" 
+      className="w-full sm:w-auto text-lg px-8 hover:opacity-90" 
+      style={{ backgroundColor: '#e6941f', color: '#073045' }}
+    >
+      Start Learning Today
+      <ArrowRight className="ml-2 h-5 w-5" />
+    </Button>
+  </Link>
+  
+  <Link href="/tutors" passHref>
+    <Button 
+      variant="outline" 
+      size="lg" 
+      className="w-full sm:w-auto text-lg px-8 border-2 border-white text-white hover:bg-white/10"
+    >
+      Browse Mentors
+    </Button>
+  </Link>
+</div>
               <div className="flex items-center justify-center lg:justify-start space-x-8 pt-8">
                 <div className="text-center">
                   <div className="text-3xl font-bold text-white">500+</div>
@@ -121,7 +191,7 @@ export default function HomePage() {
       </section>
 
       {/* Why Choose Us Section */}
-      <section className="py-20 bg-white">
+      <section id="about" className="py-20 bg-white">
         <div className="container mx-auto px-4 md:px-6 max-w-7xl">
           <div className="text-center space-y-4 mb-16">
             <h2 className="text-4xl font-bold tracking-tight" style={{ color: '#073045' }}>
@@ -208,7 +278,7 @@ export default function HomePage() {
       </section>
 
       {/* Student Success Story */}
-      <section className="py-20" style={{ backgroundColor: '#f8f9fa' }}>
+      <section id="success-stories" className="py-20" style={{ backgroundColor: '#f8f9fa' }}>
         <div className="container mx-auto px-4 md:px-6 max-w-7xl">
           <div className="grid gap-12 lg:grid-cols-2 items-center">
             <div className="relative rounded-2xl overflow-hidden shadow-xl">
@@ -244,19 +314,17 @@ export default function HomePage() {
                   <p className="text-gray-700"><strong>Hundreds of students</strong> admitted to their dream universities yearly</p>
                 </div>
               </div>
-              <Link href="/success-stories">
-                <Button size="lg" className="mt-4 hover:opacity-90" style={{ backgroundColor: '#1d636c', color: 'white' }}>
-                  Read More Stories
-                  <ArrowRight className="ml-2 h-5 w-5" />
-                </Button>
-              </Link>
+              <Button onClick={() => scrollToSection('success-stories')} size="lg" className="mt-4 hover:opacity-90" style={{ backgroundColor: '#1d636c', color: 'white' }}>
+                Read More Stories
+                <ArrowRight className="ml-2 h-5 w-5" />
+              </Button>
             </div>
           </div>
         </div>
       </section>
 
       {/* How It Works */}
-      <section className="py-20 bg-white">
+      <section id="how-it-works" className="py-20 bg-white">
         <div className="container mx-auto px-4 md:px-6 max-w-7xl">
           <div className="text-center space-y-4 mb-16">
             <h2 className="text-4xl font-bold tracking-tight" style={{ color: '#073045' }}>
@@ -298,8 +366,10 @@ export default function HomePage() {
         </div>
       </section>
 
+    
+
       {/* CTA for Corps Members */}
-      <section className="py-20 relative overflow-hidden" style={{ background: 'linear-gradient(135deg, #e6941f 0%, #d68516 100%)' }}>
+      <section id="become-mentor" className="py-20 relative overflow-hidden" style={{ background: 'linear-gradient(135deg, #e6941f 0%, #d68516 100%)' }}>
         <div className="absolute inset-0 opacity-10">
           <div className="absolute top-0 right-0 w-96 h-96 bg-white rounded-full blur-3xl"></div>
           <div className="absolute bottom-0 left-0 w-96 h-96 bg-white rounded-full blur-3xl"></div>
@@ -316,17 +386,17 @@ export default function HomePage() {
               </p>
             </div>
             <div className="flex flex-col sm:flex-row gap-6 justify-center">
-              <Link href="/become-tutor">
-                <Button size="lg" className="w-full sm:w-auto text-lg px-8 shadow-xl hover:shadow-2xl hover:-translate-y-1 transition-all" style={{ backgroundColor: '#073045', color: 'white' }}>
-                  Become a Mentor
-                  <ArrowRight className="ml-2 h-5 w-5" />
-                </Button>
-              </Link>
-              <Link href="/tutor-benefits">
-                <Button size="lg" variant="outline" className="w-full sm:w-auto text-lg px-8 border-2 border-white text-white hover:bg-white hover:text-gray-900 transition-all">
-                  Learn More
-                </Button>
-              </Link>
+               <Link href="/become-tutor" passHref>
+                <Button  size="lg" className="w-full sm:w-auto text-lg px-8 shadow-xl hover:shadow-2xl hover:-translate-y-1 transition-all" style={{ backgroundColor: '#073045', color: 'white' }}>
+                Become a Mentor
+                <ArrowRight className="ml-2 h-5 w-5" />
+              </Button>
+   
+  </Link>
+             
+              <Button size="lg" variant="outline" className="w-full sm:w-auto text-lg px-8 border-2 border-white text-white hover:bg-white hover:text-gray-900 transition-all">
+                Learn More
+              </Button>
             </div>
             <div className="grid grid-cols-3 gap-8 max-w-2xl mx-auto pt-8">
               <div>
@@ -346,67 +416,178 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* Footer */}
-      <footer className="border-t" style={{ backgroundColor: '#073045' }}>
-        <div className="container mx-auto px-4 md:px-6 py-12 max-w-7xl">
-          <div className="grid gap-8 md:grid-cols-4">
-            <div className="space-y-4">
-              <div className="flex items-center space-x-2">
-                <BookOpen className="h-6 w-6" style={{ color: '#e6941f' }} />
-                <span className="text-xl font-bold text-white">Edumentor</span>
-              </div>
-              <p className="text-sm text-white/80 leading-relaxed">
-                Empowering Nigerian students to achieve academic excellence through personalized, quality mentoring.
-              </p>
-            </div>
-            <div className="space-y-4">
-              <h4 className="font-semibold text-white">For Parents</h4>
-              <div className="space-y-2 text-sm">
-                <Link href="/tutors" className="block text-white/80 hover:text-white transition-colors">
-                  Find Mentors
-                </Link>
-                <Link href="/how-it-works" className="block text-white/80 hover:text-white transition-colors">
-                  How It Works
-                </Link>
-                <Link href="/success-stories" className="block text-white/80 hover:text-white transition-colors">
-                  Success Stories
-                </Link>
-              </div>
-            </div>
-            <div className="space-y-4">
-              <h4 className="font-semibold text-white">For Mentors</h4>
-              <div className="space-y-2 text-sm">
-                <Link href="/become-tutor" className="block text-white/80 hover:text-white transition-colors">
-                  Join as Mentor
-                </Link>
-                <Link href="/tutor-benefits" className="block text-white/80 hover:text-white transition-colors">
-                  Benefits
-                </Link>
-                <Link href="/tutor-resources" className="block text-white/80 hover:text-white transition-colors">
-                  Resources
-                </Link>
-              </div>
-            </div>
-            <div className="space-y-4">
-              <h4 className="font-semibold text-white">Support</h4>
-              <div className="space-y-2 text-sm">
-                <Link href="/help" className="block text-white/80 hover:text-white transition-colors">
-                  Help Center
-                </Link>
-                <Link href="/contact" className="block text-white/80 hover:text-white transition-colors">
-                  Contact Us
-                </Link>
-                <Link href="/privacy" className="block text-white/80 hover:text-white transition-colors">
-                  Privacy Policy
-                </Link>
-              </div>
-            </div>
+      {/* Mentor Benefits Section */}
+      <section id="mentor-benefits" className="py-20 bg-white">
+        <div className="container mx-auto px-4 md:px-6 max-w-7xl">
+          <div className="text-center space-y-4 mb-16">
+            <h2 className="text-4xl font-bold tracking-tight" style={{ color: '#073045' }}>
+              Benefits of Being a Mentor
+            </h2>
+            <p className="text-xl text-gray-600 max-w-[800px] mx-auto">
+              Join a platform that values and supports educators
+            </p>
           </div>
-          <div className="border-t border-white/20 mt-8 pt-8 text-center text-sm text-white/80">
-            <p>&copy; 2024 Edumentor. All rights reserved. Made with ❤️ for Nigerian students.</p>
+          <div className="grid gap-8 md:grid-cols-2 lg:grid-cols-3">
+            {[
+              { title: 'Earn ₦50,000 - ₦200,000/month', desc: 'Set your own rates and work as much or as little as you want' },
+              { title: 'Flexible Schedule', desc: 'Teach when it suits you - evenings, weekends, or during your free time' },
+              { title: 'Professional Development', desc: 'Access to training resources and teaching materials' },
+              { title: 'Build Your Reputation', desc: 'Gain reviews and grow your student base over time' },
+              { title: 'Secure Payments', desc: 'Safe, reliable payment system with weekly payouts' },
+              { title: 'Support Network', desc: 'Join a community of dedicated educators across Nigeria' }
+            ].map((benefit, idx) => (
+              <Card key={idx} className="border-2 hover:shadow-lg transition-all" style={{ borderColor: '#e6941f' }}>
+                <CardContent className="p-6 space-y-3">
+                  <h3 className="text-lg font-semibold" style={{ color: '#073045' }}>{benefit.title}</h3>
+                  <p className="text-gray-600">{benefit.desc}</p>
+                </CardContent>
+              </Card>
+            ))}
           </div>
         </div>
-      </footer>
+      </section>
+
+      {/* Contact Section */}
+      <section id="contact" className="py-20" style={{ backgroundColor: '#f8f9fa' }}>
+        <div className="container mx-auto px-4 md:px-6 max-w-7xl">
+          <div className="text-center space-y-4 mb-16">
+            <h2 className="text-4xl font-bold tracking-tight" style={{ color: '#073045' }}>
+              Get in Touch
+            </h2>
+            <p className="text-xl text-gray-600 max-w-[800px] mx-auto">
+              Have questions? We're here to help you get started
+            </p>
+          </div>
+          <div className="grid gap-8 lg:grid-cols-2 max-w-4xl mx-auto">
+            <div className="space-y-6">
+              <h3 className="text-2xl font-semibold" style={{ color: '#073045' }}>Contact Information</h3>
+              <div className="space-y-4">
+                <div className="flex items-start space-x-4">
+                  <div className="w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#1d636c' }}>
+                    <Mail className="h-6 w-6 text-white" />
+                  </div>
+                  <div>
+                    <h4 className="font-semibold" style={{ color: '#073045' }}>Email Us</h4>
+                    <p className="text-gray-600">support@edumentor.ng</p>
+                    <p className="text-gray-600">info@edumentor.ng</p>
+                  </div>
+                </div>
+                <div className="flex items-start space-x-4">
+                  <div className="w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#e6941f' }}>
+                    <Phone className="h-6 w-6 text-white" />
+                  </div>
+                  <div>
+                    <h4 className="font-semibold" style={{ color: '#073045' }}>Call Us</h4>
+                    <p className="text-gray-600">+234 800 123 4567</p>
+                    <p className="text-gray-600">+234 801 234 5678</p>
+                  </div>
+                </div>
+                <div className="flex items-start space-x-4">
+                  <div className="w-12 h-12 rounded-full flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#073045' }}>
+                    <MapPin className="h-6 w-6 text-white" />
+                  </div>
+                  <div>
+                    <h4 className="font-semibold" style={{ color: '#073045' }}>Visit Us</h4>
+                    <p className="text-gray-600">Off Naval Quarters</p>
+                    <p className="text-gray-600">Kubwa, Abuja, Nigeria</p>
+                  </div>
+                </div>
+              </div>
+            </div>
+            <Card className="border-2" style={{ borderColor: '#1d636c' }}>
+              <CardContent className="p-6">
+                <form className="space-y-4" onSubmit={(e) => { e.preventDefault(); alert('Thank you for your message! We will get back to you soon.'); }}>
+                  <div>
+                    <label className="block text-sm font-medium mb-2" style={{ color: '#073045' }}>Name</label>
+                    <input type="text" required className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2" style={{ borderColor: '#1d636c' }} />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-2" style={{ color: '#073045' }}>Email</label>
+                    <input type="email" required className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2" style={{ borderColor: '#1d636c' }} />
+                  </div>
+                  <div>
+                    <label className="block text-sm font-medium mb-2" style={{ color: '#073045' }}>Message</label>
+                    <textarea required rows={4} className="w-full px-4 py-2 border rounded-lg focus:outline-none focus:ring-2" style={{ borderColor: '#1d636c' }}></textarea>
+                  </div>
+                  <Button type="submit" className="w-full text-white hover:opacity-90" style={{ backgroundColor: '#1d636c' }}>
+                    Send Message
+                  </Button>
+                </form>
+              </CardContent>
+            </Card>
+          </div>
+        </div>
+      </section>
+
+      {/* Footer */}
+   <footer className="border-t" style={{ backgroundColor: '#073045' }}>
+  <div className="container mx-auto px-4 md:px-6 py-12 max-w-7xl">
+    <div className="grid gap-8 md:grid-cols-4">
+      <div className="space-y-4">
+        <div className="flex items-center space-x-2">
+          <div className="h-8 w-8 rounded-lg flex items-center justify-center" style={{ backgroundColor: '#e6941f' }}>
+            <Image 
+              src="/edumentor-logo.png"
+              alt="Edumentor Logo"
+              width={32}
+              height={32}
+              className="h-8 w-8"
+            />
+          </div>
+          <span className="text-xl font-bold text-white">Edumentor</span>
+        </div>
+        <p className="text-sm text-white/80 leading-relaxed">
+          Empowering Nigerian students to achieve academic excellence through personalized, quality mentoring.
+        </p>
+      </div>
+      <div className="space-y-4">
+        <h4 className="font-semibold text-white">For Parents</h4>
+        <div className="space-y-2 text-sm">
+          <Link href="/tutors" className="block text-white/80 hover:text-white transition-colors text-left">
+            Find Mentors
+          </Link>
+          <button onClick={() => scrollToSection('how-it-works')} className="block text-white/80 hover:text-white transition-colors text-left">
+            How It Works
+          </button>
+          <button onClick={() => scrollToSection('success-stories')} className="block text-white/80 hover:text-white transition-colors text-left">
+            Success Stories
+          </button>
+        </div>
+      </div>
+      <div className="space-y-4">
+        <h4 className="font-semibold text-white">For Mentors</h4>
+        <div className="space-y-2 text-sm">
+          <Link href="/become-tutor" className="block text-white/80 hover:text-white transition-colors text-left">
+            Join as Mentor
+          </Link>
+          <button onClick={() => scrollToSection('mentor-benefits')} className="block text-white/80 hover:text-white transition-colors text-left">
+            Benefits
+          </button>
+          <button onClick={() => scrollToSection('mentor-benefits')} className="block text-white/80 hover:text-white transition-colors text-left">
+            Resources
+          </button>
+        </div>
+      </div>
+      <div className="space-y-4">
+        <h4 className="font-semibold text-white">Support</h4>
+        <div className="space-y-2 text-sm">
+          <button onClick={() => scrollToSection('about')} className="block text-white/80 hover:text-white transition-colors text-left">
+            Help Center
+          </button>
+          <button onClick={() => scrollToSection('contact')} className="block text-white/80 hover:text-white transition-colors text-left">
+            Contact Us
+          </button>
+          <button onClick={() => scrollToSection('home')} className="block text-white/80 hover:text-white transition-colors text-left">
+            Privacy Policy
+          </button>
+        </div>
+      </div>
+    </div>
+    <div className="border-t border-white/20 mt-8 pt-8 text-center text-sm text-white/80">
+      <p>&copy; 2024 Edumentor. All rights reserved. Made with ❤️ for Nigerian students.</p>
+    </div>
+  </div>
+</footer>
     </div>
   )
 }

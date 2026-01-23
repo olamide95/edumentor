@@ -1155,7 +1155,13 @@ export default function TutorProfilePage() {
           <div className="grid gap-8 md:grid-cols-4">
             <div className="space-y-4">
               <div className="flex items-center space-x-2">
-                <BookOpen className="h-6 w-6" style={{ color: '#e6941f' }} />
+                 <Image 
+                              src="/edumentor-logo.png"
+                              alt="Edumentor Logo"
+                              width={32}
+                              height={32}
+                              className="h-8 w-8"
+                            />
                 <span className="text-xl font-bold text-white">Edumentor</span>
               </div>
               <p className="text-sm text-white/80 leading-relaxed">
@@ -1168,10 +1174,10 @@ export default function TutorProfilePage() {
                 <Link href="/tutors" className="block text-white/80 hover:text-white transition-colors">
                   Find Mentors
                 </Link>
-                <Link href="/how-it-works" className="block text-white/80 hover:text-white transition-colors">
+                <Link href="/" className="block text-white/80 hover:text-white transition-colors">
                   How It Works
                 </Link>
-                <Link href="/success-stories" className="block text-white/80 hover:text-white transition-colors">
+                <Link href="/" className="block text-white/80 hover:text-white transition-colors">
                   Success Stories
                 </Link>
               </div>
@@ -1182,10 +1188,10 @@ export default function TutorProfilePage() {
                 <Link href="/become-tutor" className="block text-white/80 hover:text-white transition-colors">
                   Join as Mentor
                 </Link>
-                <Link href="/tutor-benefits" className="block text-white/80 hover:text-white transition-colors">
+                <Link href="/" className="block text-white/80 hover:text-white transition-colors">
                   Benefits
                 </Link>
-                <Link href="/tutor-resources" className="block text-white/80 hover:text-white transition-colors">
+                <Link href="/" className="block text-white/80 hover:text-white transition-colors">
                   Resources
                 </Link>
               </div>
@@ -1193,13 +1199,13 @@ export default function TutorProfilePage() {
             <div className="space-y-4">
               <h4 className="font-semibold text-white">Support</h4>
               <div className="space-y-2 text-sm">
-                <Link href="/help" className="block text-white/80 hover:text-white transition-colors">
+                <Link href="/" className="block text-white/80 hover:text-white transition-colors">
                   Help Center
                 </Link>
-                <Link href="/contact" className="block text-white/80 hover:text-white transition-colors">
+                <Link href="/" className="block text-white/80 hover:text-white transition-colors">
                   Contact Us
                 </Link>
-                <Link href="/privacy" className="block text-white/80 hover:text-white transition-colors">
+                <Link href="/" className="block text-white/80 hover:text-white transition-colors">
                   Privacy Policy
                 </Link>
               </div>
