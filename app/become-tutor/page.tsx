@@ -1512,7 +1512,7 @@ function EducationAndTeachingStep({
                 <SelectValue placeholder="Select batch year" />
               </SelectTrigger>
               <SelectContent>
-                {["2024", "2023", "2022", "2021", "2020"].map(year => (
+                {["2026","2025","2024", "2023", "2022", "2021", "2020"].map(year => (
                   <SelectItem key={year} value={year}>
                     {year} Batch
                   </SelectItem>
