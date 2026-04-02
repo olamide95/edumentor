@@ -93,31 +93,7 @@ function Badge({ variant, className, children, style }: any) {
 }
 
 // ==========================================
-// PLATFORM CREDENTIALS & CONFIG
-// ==========================================
-
-// ==========================================
-// CREDENTIALS — loaded from environment variables only.
-// Never hardcode secrets in source code.
-//
-// Add to .env.local (do NOT commit this file):
-//   ZOOM_ACCOUNT_ID=your_account_id
-//   ZOOM_CLIENT_ID=your_client_id
-//   ZOOM_CLIENT_SECRET=your_client_secret       ← server-side only, never NEXT_PUBLIC_
-//   NEXT_PUBLIC_GOOGLE_CALENDAR_API_KEY=your_api_key
-// ==========================================
-
-const ZOOM_CONFIG = {
-  accountId: process.env.ZOOM_ACCOUNT_ID ?? '',
-  clientId: process.env.ZOOM_CLIENT_ID ?? '',
-  // clientSecret is intentionally absent here — only used inside /api/zoom/token (server route)
-};
-
-// GOOGLE_CONFIG removed — Google Meet is now created server-side via /api/google-meet
-// No API keys or credentials are needed in the frontend.
-
-// ==========================================
-// VIDEO MEETING INTERFACES & HELPERS
+// INTERFACES
 // ==========================================
 
 interface VideoMeeting {
@@ -127,7 +103,7 @@ interface VideoMeeting {
   subject: string;
   meetingDate: string;
   meetingTime: string;
-  duration: number; // in minutes
+  duration: number;
   meetingLink: string;
   meetingPlatform: 'zoom' | 'google_meet';
   students: string[];
@@ -139,7 +115,6 @@ interface VideoMeeting {
   notes: string;
   createdAt: any;
   tutorId: string;
-  // Platform-specific meeting IDs
   zoomMeetingId?: string;
   googleCalendarEventId?: string;
 }
@@ -161,163 +136,47 @@ interface MeetingFormData {
 }
 
 // ==========================================
-// ZOOM API INTEGRATION
+// PLATFORM API HELPERS  
+// All calls go to our own backend — never directly to Zoom/Google from browser
 // ==========================================
 
 /**
- * Gets a Zoom access token by calling YOUR OWN backend API route.
- * The clientSecret never touches the browser — it stays in your server env.
- *
- * Create this route in Next.js: /app/api/zoom/token/route.ts
- *
- *   import { NextResponse } from 'next/server';
- *   export async function POST() {
- *     const credentials = Buffer.from(
- *       `${process.env.ZOOM_CLIENT_ID}:${process.env.ZOOM_CLIENT_SECRET}`
- *     ).toString('base64');
- *     const res = await fetch(
- *       `https://zoom.us/oauth/token?grant_type=account_credentials&account_id=${process.env.ZOOM_ACCOUNT_ID}`,
- *       { method: 'POST', headers: { Authorization: `Basic ${credentials}` } }
- *     );
- *     const data = await res.json();
- *     return NextResponse.json({ access_token: data.access_token });
- *   }
- */
-const getZoomAccessToken = async (): Promise<string | null> => {
-  try {
-    const res = await fetch('/api/zoom/token', { method: 'POST' });
-    if (!res.ok) return null;
-    const data = await res.json();
-    return data.access_token || null;
-  } catch (err) {
-    console.error('Zoom token error:', err);
-    return null;
-  }
-};
-
-/**
- * Creates a Zoom meeting via the Zoom API.
- * Returns { join_url, id } or null on failure.
+ * Creates a Zoom meeting via /api/zoom/meeting (server-side, no CORS)
  */
 const createZoomMeeting = async (formData: MeetingFormData): Promise<{ join_url: string; id: string } | null> => {
   try {
-    const token = await getZoomAccessToken();
-    if (!token) {
-      toast.error('Failed to authenticate with Zoom. Using fallback link.');
-      return null;
-    }
-
-    // Build ISO datetime: meetingDate = "YYYY-MM-DD", meetingTime = "HH:MM"
-    const startTime = new Date(`${formData.meetingDate}T${formData.meetingTime}:00`).toISOString();
-
-    const recurrenceMap: Record<string, { type: number; repeat_interval: number }> = {
-      daily: { type: 1, repeat_interval: 1 },
-      weekly: { type: 2, repeat_interval: 1 },
-      biweekly: { type: 2, repeat_interval: 2 },
-      monthly: { type: 3, repeat_interval: 1 },
-    };
-
-    const body: any = {
-      topic: formData.title,
-      type: formData.isRecurring ? 8 : 2, // 2 = scheduled, 8 = recurring
-      start_time: startTime,
-      duration: formData.duration,
-      agenda: formData.description || formData.notes,
-      settings: {
-        host_video: true,
-        participant_video: true,
-        join_before_host: false,
-        mute_upon_entry: true,
-        waiting_room: true,
-        auto_recording: 'none',
-      },
-    };
-
-    if (formData.isRecurring && recurrenceMap[formData.recurringPattern]) {
-      body.recurrence = {
-        ...recurrenceMap[formData.recurringPattern],
-        end_times: 10, // End after 10 occurrences by default
-      };
-    }
-
-    const res = await fetch('https://api.zoom.us/v2/users/me/meetings', {
+    const res = await fetch('/api/zoom/meeting', {
       method: 'POST',
-      headers: {
-        Authorization: `Bearer ${token}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(body),
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        title:            formData.title,
+        description:      formData.description || formData.notes,
+        meetingDate:      formData.meetingDate,
+        meetingTime:      formData.meetingTime,
+        duration:         formData.duration,
+        isRecurring:      formData.isRecurring,
+        recurringPattern: formData.recurringPattern,
+      }),
     });
 
+    const data = await res.json();
+
     if (!res.ok) {
-      const errData = await res.json();
-      console.error('Zoom create meeting error:', errData);
+      console.error('Zoom API error:', data);
+      toast.error(data.error || 'Failed to create Zoom meeting.');
       return null;
     }
 
-    const data = await res.json();
     return { join_url: data.join_url, id: String(data.id) };
   } catch (err) {
-    console.error('Zoom meeting creation error:', err);
+    console.error('Zoom meeting error:', err);
+    toast.error('Could not reach Zoom API. Check server logs.');
     return null;
   }
 };
 
-// ==========================================
-// GOOGLE MEET INTEGRATION
-// ==========================================
-
 /**
- * Creates a Google Meet link by calling your own backend API route.
- * No OAuth popup, no client_id needed on the frontend.
- *
- * Create this route at: /app/api/google-meet/route.ts
- *
- * It uses a Google Service Account to create a Calendar event with a Meet link.
- * Steps to set up (one time):
- *   1. Go to Google Cloud Console → IAM → Service Accounts → Create Service Account
- *   2. Give it the role "Calendar API" or share your Google Calendar with its email
- *   3. Create a JSON key, download it
- *   4. Add these to .env.local:
- *        GOOGLE_SERVICE_ACCOUNT_EMAIL=your-sa@your-project.iam.gserviceaccount.com
- *        GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
- *        GOOGLE_CALENDAR_ID=primary   (or a specific calendar ID)
- *
- * Example /app/api/google-meet/route.ts:
- *
- *   import { NextRequest, NextResponse } from 'next/server';
- *   import { google } from 'googleapis';
- *
- *   export async function POST(req: NextRequest) {
- *     const body = await req.json();
- *     const auth = new google.auth.JWT(
- *       process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
- *       undefined,
- *       process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY?.replace(/\\n/g, '\n'),
- *       ['https://www.googleapis.com/auth/calendar.events']
- *     );
- *     const calendar = google.calendar({ version: 'v3', auth });
- *     const event = await calendar.events.insert({
- *       calendarId: process.env.GOOGLE_CALENDAR_ID || 'primary',
- *       conferenceDataVersion: 1,
- *       requestBody: {
- *         summary: body.title,
- *         description: body.description,
- *         start: { dateTime: body.startTime, timeZone: body.timeZone },
- *         end:   { dateTime: body.endTime,   timeZone: body.timeZone },
- *         conferenceData: {
- *           createRequest: {
- *             requestId: `edumentor-${Date.now()}`,
- *             conferenceSolutionKey: { type: 'hangoutsMeet' },
- *           },
- *         },
- *         ...(body.recurrence ? { recurrence: [body.recurrence] } : {}),
- *       },
- *     });
- *     const meetLink = event.data.conferenceData?.entryPoints
- *       ?.find((ep: any) => ep.entryPointType === 'video')?.uri;
- *     return NextResponse.json({ meet_link: meetLink, event_id: event.data.id });
- *   }
+ * Creates a Google Meet event via /api/google-meet (server-side, no CORS)
  */
 const createGoogleMeetLink = async (formData: MeetingFormData): Promise<{ meet_link: string; event_id: string } | null> => {
   try {
@@ -348,41 +207,23 @@ const createGoogleMeetLink = async (formData: MeetingFormData): Promise<{ meet_l
 
     if (!res.ok) {
       console.error('Google Meet API error:', data);
-
-      if (data.error === 'invalid_grant' || data.error === 'auth_required') {
-        toast.error(
-          'Google auth expired. Please contact support to reconnect Google Meet.',
-          { duration: 6000 }
-        );
+      if (data.error === 'invalid_grant') {
+        toast.error('Google auth expired. Contact support to reconnect Google Meet.', { duration: 6000 });
       } else {
-        toast.error(data.message || data.error || 'Failed to create Google Meet link.');
+        toast.error(data.message || data.error || 'Failed to create Google Meet.');
       }
       return null;
     }
 
     return {
-      meet_link: data.meet_link || 'https://meet.google.com/new',
-      event_id:  data.event_id  || '',
+      meet_link: data.meet_link,
+      event_id:  data.event_id || '',
     };
   } catch (err) {
-    console.error('Google Meet creation error:', err);
+    console.error('Google Meet error:', err);
+    toast.error('Could not reach Google Meet API. Check server logs.');
     return null;
   }
-};
-
-// ==========================================
-// FALLBACK LINK GENERATORS
-// ==========================================
-
-const generateFallbackZoomLink = () => {
-  const digits = Array.from({ length: 11 }, () => Math.floor(Math.random() * 10)).join('');
-  return `https://zoom.us/j/${digits}`;
-};
-
-const generateFallbackGoogleMeetLink = () => {
-  const chars = 'abcdefghijklmnopqrstuvwxyz';
-  const seg = (len: number) => Array.from({ length: len }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
-  return `https://meet.google.com/${seg(3)}-${seg(4)}-${seg(3)}`;
 };
 
 // ==========================================
@@ -1098,41 +939,46 @@ export default function TutorDashboardPage() {
 
   const handleCreateMeeting = async (formData: MeetingFormData) => {
     setIsCreatingMeeting(true);
+    toast.loading(
+      formData.meetingPlatform === 'zoom' ? 'Creating Zoom meeting...' : 'Creating Google Meet...',
+      { id: 'meeting-create' }
+    );
+
     try {
       let meetingLink = '';
       let zoomMeetingId: string | undefined;
       let googleCalendarEventId: string | undefined;
 
       if (editingMeeting) {
-        // For edits, keep existing link or allow manual update
-        meetingLink = formData.meetingLink || editingMeeting.meetingLink;
+        meetingLink = editingMeeting.meetingLink;
       } else {
-        // Create via platform API
         if (formData.meetingPlatform === 'zoom') {
-          toast.loading('Creating Zoom meeting...', { id: 'meeting-create' });
           const zoomResult = await createZoomMeeting(formData);
-          if (zoomResult) {
-            meetingLink = zoomResult.join_url;
-            zoomMeetingId = zoomResult.id;
-            toast.success('Zoom meeting created!', { id: 'meeting-create' });
-          } else {
-            // Fallback
-            meetingLink = generateFallbackZoomLink();
-            toast.success('Meeting created with placeholder Zoom link. Replace with your actual Zoom link.', { id: 'meeting-create' });
+          if (!zoomResult) {
+            toast.error('Failed to create Zoom meeting. Check your /api/zoom/meeting route and credentials.', { id: 'meeting-create' });
+            setIsCreatingMeeting(false);
+            return; // Stop — do NOT save a broken link
           }
+          meetingLink = zoomResult.join_url;
+          zoomMeetingId = zoomResult.id;
+
         } else if (formData.meetingPlatform === 'google_meet') {
-          toast.loading('Creating Google Meet...', { id: 'meeting-create' });
           const googleResult = await createGoogleMeetLink(formData);
-          if (googleResult) {
-            meetingLink = googleResult.meet_link;
-            googleCalendarEventId = googleResult.event_id;
-            toast.success('Google Meet created!', { id: 'meeting-create' });
-          } else {
-            // Fallback
-            meetingLink = generateFallbackGoogleMeetLink();
-            toast.success('Meeting created with placeholder Google Meet link. Sign in to Google to auto-generate.', { id: 'meeting-create' });
+          if (!googleResult) {
+            toast.error('Failed to create Google Meet. Check your GOOGLE_REFRESH_TOKEN in .env.local.', { id: 'meeting-create' });
+            setIsCreatingMeeting(false);
+            return; // Stop — do NOT save a broken link
           }
+          meetingLink = googleResult.meet_link;
+          googleCalendarEventId = googleResult.event_id;
         }
+      }
+
+      // Final guard — never save an empty or obviously fake link
+      if (!meetingLink || !meetingLink.startsWith('https://')) {
+        toast.error('Meeting link is invalid. The API did not return a valid URL.', { id: 'meeting-create' });
+        setIsCreatingMeeting(false);
+        return;
       }
 
       const studentNames = activeStudents
@@ -1165,18 +1011,22 @@ export default function TutorDashboardPage() {
 
       if (editingMeeting) {
         await updateDoc(doc(db, 'meetings', editingMeeting.id), meetingData);
-        toast.success('Meeting updated successfully!');
+        toast.success('Meeting updated successfully!', { id: 'meeting-create' });
       } else {
         meetingData.createdAt = serverTimestamp();
         await addDoc(collection(db, 'meetings'), meetingData);
+        toast.success(
+          formData.meetingPlatform === 'zoom' ? 'Zoom meeting created!' : 'Google Meet created!',
+          { id: 'meeting-create' }
+        );
       }
-      
+
       setEditingMeeting(null);
       setShowCreateMeeting(false);
       loadMeetings();
     } catch (error) {
       console.error("Error saving meeting:", error);
-      toast.error("Failed to save meeting");
+      toast.error("Failed to save meeting. Please try again.", { id: 'meeting-create' });
     } finally {
       setIsCreatingMeeting(false);
     }
