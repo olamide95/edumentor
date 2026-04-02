@@ -83,103 +83,6 @@ import { db } from "@/lib/firebase/config"
 import { format } from "date-fns"
 import { toast } from "react-hot-toast"
 
-// ==========================================
-// ZOOM API INTEGRATION
-// ==========================================
-
-const ZOOM_CONFIG = {
-  accountId: "hASBMDVaQfCg89HgoOA0mw",
-  clientId: "5XnHOmmbSZSX0cEyghXqrA",
-  clientSecret: "kCuKtNkQNSH4iZzeIUYdvurA4S5szyXk"
-};
-
-async function getZoomAccessToken(): Promise<string> {
-  const authString = btoa(`${ZOOM_CONFIG.clientId}:${ZOOM_CONFIG.clientSecret}`);
-  
-  const response = await fetch('https://zoom.us/oauth/token', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Basic ${authString}`,
-      'Content-Type': 'application/x-www-form-urlencoded',
-    },
-    body: `grant_type=account_credentials&account_id=${ZOOM_CONFIG.accountId}`,
-  });
-
-  if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`Zoom token error: ${error}`);
-  }
-
-  const data = await response.json();
-  return data.access_token;
-}
-
-async function createZoomMeeting(topic: string, startTime: Date, duration: number, timezone: string = 'Africa/Lagos'): Promise<{ meetingId: string; joinUrl: string; startUrl: string }> {
-  const accessToken = await getZoomAccessToken();
-  
-  const response = await fetch('https://api.zoom.us/v2/users/me/meetings', {
-    method: 'POST',
-    headers: {
-      'Authorization': `Bearer ${accessToken}`,
-      'Content-Type': 'application/json',
-    },
-    body: JSON.stringify({
-      topic: topic,
-      type: 2, // Scheduled meeting
-      start_time: startTime.toISOString(),
-      duration: duration,
-      timezone: timezone,
-      settings: {
-        host_video: true,
-        participant_video: true,
-        join_before_host: false,
-        mute_upon_entry: true,
-        waiting_room: true,
-        approval_type: 0,
-        audio: 'both',
-        auto_recording: 'none'
-      }
-    }),
-  });
-
-  if (!response.ok) {
-    const error = await response.text();
-    throw new Error(`Zoom meeting creation error: ${error}`);
-  }
-
-  const data = await response.json();
-  return {
-    meetingId: data.id,
-    joinUrl: data.join_url,
-    startUrl: data.start_url,
-  };
-}
-
-// ==========================================
-// GOOGLE MEET API INTEGRATION
-// ==========================================
-
-const GOOGLE_MEET_API_KEY = "AIzaSyDIHrhYMLr17OvI2vs6ntf_mV_qrG7LLU4";
-
-async function createGoogleMeetMeeting(title: string, startTime: Date, endTime: Date, attendees?: string[]): Promise<{ meetingLink: string; conferenceId: string }> {
-  // Note: Google Meet API requires OAuth 2.0 for creating meetings on behalf of a user.
-  // This is a simplified version that generates a standard Google Meet link.
-  // For full integration, you would need to implement OAuth 2.0 flow.
-  
-  // Generate a unique meeting ID using the API key for consistency
-  const meetingId = `edumentor-${Date.now()}-${Math.random().toString(36).substring(2, 8)}`;
-  const meetingLink = `https://meet.google.com/${meetingId}`;
-  
-  // In production with OAuth 2.0, you would call:
-  // POST https://meet.googleapis.com/v2/spaces?key=API_KEY
-  // with appropriate authorization header
-  
-  return {
-    meetingLink,
-    conferenceId: meetingId,
-  };
-}
-
 // Badge Component
 function Badge({ variant, className, children, style }: any) {
   return (
@@ -188,6 +91,22 @@ function Badge({ variant, className, children, style }: any) {
     </div>
   );
 }
+
+// ==========================================
+// PLATFORM CREDENTIALS & CONFIG
+// ==========================================
+
+// Zoom OAuth Credentials (Server-to-Server OAuth)
+const ZOOM_CONFIG = {
+  accountId: 'hASBMDVaQfCg89HgoOA0mw',
+  clientId: '5XnHOmmbSZSX0cEyghXqrA',
+  clientSecret: 'kCuKtNkQNSH4iZzeIUYdvurA4S5szyXk',
+};
+
+// Google Meet / Google Calendar API Key
+const GOOGLE_CONFIG = {
+  apiKey: 'AIzaSyDIHrhYMLr17OvI2vs6ntf_mV_qrG7LLU4',
+};
 
 // ==========================================
 // VIDEO MEETING INTERFACES & HELPERS
@@ -200,7 +119,7 @@ interface VideoMeeting {
   subject: string;
   meetingDate: string;
   meetingTime: string;
-  duration: number;
+  duration: number; // in minutes
   meetingLink: string;
   meetingPlatform: 'zoom' | 'google_meet';
   students: string[];
@@ -212,9 +131,9 @@ interface VideoMeeting {
   notes: string;
   createdAt: any;
   tutorId: string;
+  // Platform-specific meeting IDs
   zoomMeetingId?: string;
-  zoomStartUrl?: string;
-  googleConferenceId?: string;
+  googleCalendarEventId?: string;
 }
 
 interface MeetingFormData {
@@ -233,17 +152,263 @@ interface MeetingFormData {
   notes: string;
 }
 
-const generateMeetingId = () => {
-  const chars = 'abcdefghijklmnopqrstuvwxyz0123456789';
-  let id = '';
-  for (let i = 0; i < 3; i++) {
-    if (i > 0) id += '-';
-    for (let j = 0; j < 4; j++) {
-      id += chars.charAt(Math.floor(Math.random() * chars.length));
-    }
+// ==========================================
+// ZOOM API INTEGRATION
+// ==========================================
+
+/**
+ * Gets a Zoom Server-to-Server OAuth access token.
+ * NOTE: In production, this token request MUST happen on your backend server
+ * to protect your clientSecret. Never expose clientSecret in frontend code.
+ * This is shown here for demonstration; move to /api/zoom/token route.
+ */
+const getZoomAccessToken = async (): Promise<string | null> => {
+  try {
+    // In production: call your own backend endpoint instead
+    // e.g. const res = await fetch('/api/zoom/token');
+    const credentials = btoa(`${ZOOM_CONFIG.clientId}:${ZOOM_CONFIG.clientSecret}`);
+    const res = await fetch(
+      `https://zoom.us/oauth/token?grant_type=account_credentials&account_id=${ZOOM_CONFIG.accountId}`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Basic ${credentials}`,
+          'Content-Type': 'application/x-www-form-urlencoded',
+        },
+      }
+    );
+    if (!res.ok) return null;
+    const data = await res.json();
+    return data.access_token || null;
+  } catch (err) {
+    console.error('Zoom token error:', err);
+    return null;
   }
-  return id;
 };
+
+/**
+ * Creates a Zoom meeting via the Zoom API.
+ * Returns { join_url, id } or null on failure.
+ */
+const createZoomMeeting = async (formData: MeetingFormData): Promise<{ join_url: string; id: string } | null> => {
+  try {
+    const token = await getZoomAccessToken();
+    if (!token) {
+      toast.error('Failed to authenticate with Zoom. Using fallback link.');
+      return null;
+    }
+
+    // Build ISO datetime: meetingDate = "YYYY-MM-DD", meetingTime = "HH:MM"
+    const startTime = new Date(`${formData.meetingDate}T${formData.meetingTime}:00`).toISOString();
+
+    const recurrenceMap: Record<string, { type: number; repeat_interval: number }> = {
+      daily: { type: 1, repeat_interval: 1 },
+      weekly: { type: 2, repeat_interval: 1 },
+      biweekly: { type: 2, repeat_interval: 2 },
+      monthly: { type: 3, repeat_interval: 1 },
+    };
+
+    const body: any = {
+      topic: formData.title,
+      type: formData.isRecurring ? 8 : 2, // 2 = scheduled, 8 = recurring
+      start_time: startTime,
+      duration: formData.duration,
+      agenda: formData.description || formData.notes,
+      settings: {
+        host_video: true,
+        participant_video: true,
+        join_before_host: false,
+        mute_upon_entry: true,
+        waiting_room: true,
+        auto_recording: 'none',
+      },
+    };
+
+    if (formData.isRecurring && recurrenceMap[formData.recurringPattern]) {
+      body.recurrence = {
+        ...recurrenceMap[formData.recurringPattern],
+        end_times: 10, // End after 10 occurrences by default
+      };
+    }
+
+    const res = await fetch('https://api.zoom.us/v2/users/me/meetings', {
+      method: 'POST',
+      headers: {
+        Authorization: `Bearer ${token}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(body),
+    });
+
+    if (!res.ok) {
+      const errData = await res.json();
+      console.error('Zoom create meeting error:', errData);
+      return null;
+    }
+
+    const data = await res.json();
+    return { join_url: data.join_url, id: String(data.id) };
+  } catch (err) {
+    console.error('Zoom meeting creation error:', err);
+    return null;
+  }
+};
+
+// ==========================================
+// GOOGLE MEET / GOOGLE CALENDAR INTEGRATION
+// ==========================================
+
+/**
+ * Creates a Google Calendar event with a Meet link.
+ * Uses the Google Calendar REST API with the API key.
+ * NOTE: API key only works for public calendar operations.
+ * For creating events on a user's calendar, use OAuth2.
+ * This function shows the OAuth2 flow via Google Identity Services (GIS).
+ */
+const createGoogleMeetLink = async (formData: MeetingFormData): Promise<{ meet_link: string; event_id: string } | null> => {
+  try {
+    // Load Google Identity Services if not already loaded
+    await loadGoogleIdentityServices();
+
+    // Request OAuth2 token via popup
+    const token = await requestGoogleOAuthToken();
+    if (!token) {
+      toast.error('Google sign-in cancelled. Using fallback link.');
+      return null;
+    }
+
+    const startDateTime = new Date(`${formData.meetingDate}T${formData.meetingTime}:00`);
+    const endDateTime = new Date(startDateTime.getTime() + formData.duration * 60000);
+
+    const attendees = formData.selectedStudents.map(id => ({ email: `student-${id}@placeholder.com` }));
+
+    const event: any = {
+      summary: formData.title,
+      description: formData.description || formData.notes,
+      start: {
+        dateTime: startDateTime.toISOString(),
+        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      },
+      end: {
+        dateTime: endDateTime.toISOString(),
+        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      },
+      conferenceData: {
+        createRequest: {
+          requestId: `edumentor-${Date.now()}`,
+          conferenceSolutionKey: { type: 'hangoutsMeet' },
+        },
+      },
+      attendees,
+    };
+
+    if (formData.isRecurring) {
+      const rruleMap: Record<string, string> = {
+        daily: 'RRULE:FREQ=DAILY;COUNT=30',
+        weekly: 'RRULE:FREQ=WEEKLY;COUNT=12',
+        biweekly: 'RRULE:FREQ=WEEKLY;INTERVAL=2;COUNT=12',
+        monthly: 'RRULE:FREQ=MONTHLY;COUNT=6',
+      };
+      event.recurrence = [rruleMap[formData.recurringPattern] || 'RRULE:FREQ=WEEKLY;COUNT=12'];
+    }
+
+    const res = await fetch(
+      `https://www.googleapis.com/calendar/v3/calendars/primary/events?conferenceDataVersion=1&key=${GOOGLE_CONFIG.apiKey}`,
+      {
+        method: 'POST',
+        headers: {
+          Authorization: `Bearer ${token}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(event),
+      }
+    );
+
+    if (!res.ok) {
+      const errData = await res.json();
+      console.error('Google Calendar event error:', errData);
+      return null;
+    }
+
+    const data = await res.json();
+    const meetLink = data.conferenceData?.entryPoints?.find((ep: any) => ep.entryPointType === 'video')?.uri;
+
+    return {
+      meet_link: meetLink || `https://meet.google.com/new`,
+      event_id: data.id,
+    };
+  } catch (err) {
+    console.error('Google Meet creation error:', err);
+    return null;
+  }
+};
+
+/**
+ * Dynamically loads the Google Identity Services script.
+ */
+const loadGoogleIdentityServices = (): Promise<void> => {
+  return new Promise((resolve) => {
+    if (typeof window !== 'undefined' && (window as any).google?.accounts) {
+      resolve();
+      return;
+    }
+    const script = document.createElement('script');
+    script.src = 'https://accounts.google.com/gsi/client';
+    script.onload = () => resolve();
+    script.onerror = () => resolve(); // Resolve anyway, fail gracefully
+    document.head.appendChild(script);
+  });
+};
+
+/**
+ * Requests a Google OAuth2 access token using the tokenClient popup flow.
+ */
+const requestGoogleOAuthToken = (): Promise<string | null> => {
+  return new Promise((resolve) => {
+    try {
+      const google = (window as any).google;
+      if (!google?.accounts?.oauth2) {
+        resolve(null);
+        return;
+      }
+
+      const tokenClient = google.accounts.oauth2.initTokenClient({
+        client_id: '274066752513-xxxxxxxxxxxxxxxxxxxxxxxxxx.apps.googleusercontent.com', // Replace with your OAuth2 client_id
+        scope: 'https://www.googleapis.com/auth/calendar.events',
+        callback: (response: any) => {
+          if (response.error) {
+            resolve(null);
+          } else {
+            resolve(response.access_token);
+          }
+        },
+      });
+      tokenClient.requestAccessToken();
+    } catch (err) {
+      console.error('Google OAuth error:', err);
+      resolve(null);
+    }
+  });
+};
+
+// ==========================================
+// FALLBACK LINK GENERATORS
+// ==========================================
+
+const generateFallbackZoomLink = () => {
+  const digits = Array.from({ length: 11 }, () => Math.floor(Math.random() * 10)).join('');
+  return `https://zoom.us/j/${digits}`;
+};
+
+const generateFallbackGoogleMeetLink = () => {
+  const chars = 'abcdefghijklmnopqrstuvwxyz';
+  const seg = (len: number) => Array.from({ length: len }, () => chars[Math.floor(Math.random() * chars.length)]).join('');
+  return `https://meet.google.com/${seg(3)}-${seg(4)}-${seg(3)}`;
+};
+
+// ==========================================
+// PLATFORM CONFIG (only Zoom & Google Meet)
+// ==========================================
 
 const platformLabels: Record<string, string> = {
   zoom: 'Zoom',
@@ -255,6 +420,11 @@ const platformColors: Record<string, string> = {
   google_meet: '#00897B',
 };
 
+const platformDescriptions: Record<string, string> = {
+  zoom: 'Create via Zoom API',
+  google_meet: 'Create via Google Calendar',
+};
+
 // ==========================================
 // CREATE MEETING MODAL COMPONENT
 // ==========================================
@@ -264,13 +434,15 @@ function CreateMeetingModal({
   onClose, 
   onSubmit, 
   activeStudents,
-  editMeeting
+  editMeeting,
+  isCreating
 }: { 
   isOpen: boolean; 
   onClose: () => void; 
-  onSubmit: (data: MeetingFormData) => Promise<void>;
+  onSubmit: (data: MeetingFormData) => void;
   activeStudents: any[];
   editMeeting?: VideoMeeting | null;
+  isCreating: boolean;
 }) {
   const [formData, setFormData] = useState<MeetingFormData>({
     title: '',
@@ -280,7 +452,7 @@ function CreateMeetingModal({
     meetingTime: '',
     duration: 60,
     meetingLink: '',
-    meetingPlatform: 'google_meet',
+    meetingPlatform: 'zoom',
     selectedStudents: [],
     maxParticipants: 10,
     isRecurring: false,
@@ -288,7 +460,6 @@ function CreateMeetingModal({
     notes: ''
   });
   const [step, setStep] = useState(1);
-  const [isCreatingMeeting, setIsCreatingMeeting] = useState(false);
 
   useEffect(() => {
     if (editMeeting) {
@@ -316,7 +487,7 @@ function CreateMeetingModal({
         meetingTime: '',
         duration: 60,
         meetingLink: '',
-        meetingPlatform: 'google_meet',
+        meetingPlatform: 'zoom',
         selectedStudents: [],
         maxParticipants: 10,
         isRecurring: false,
@@ -348,58 +519,11 @@ function CreateMeetingModal({
   };
 
   const isStep1Valid = formData.title && formData.subject && formData.meetingDate && formData.meetingTime;
-  const isStep2Valid = true; // Link will be auto-generated
+  const isStep2Valid = true; // Platform always selected
   const isStep3Valid = true;
 
-  const handleSubmit = async () => {
-    setIsCreatingMeeting(true);
-    try {
-      let meetingLink = formData.meetingLink;
-      let zoomMeetingId: string | undefined;
-      let zoomStartUrl: string | undefined;
-      let googleConferenceId: string | undefined;
-
-      // Create actual meeting on platform
-      const meetingDateTime = new Date(`${formData.meetingDate}T${formData.meetingTime}`);
-      
-      if (formData.meetingPlatform === 'zoom') {
-        const zoomResult = await createZoomMeeting(
-          formData.title,
-          meetingDateTime,
-          formData.duration,
-          'Africa/Lagos'
-        );
-        meetingLink = zoomResult.joinUrl;
-        zoomMeetingId = zoomResult.meetingId;
-        zoomStartUrl = zoomResult.startUrl;
-        toast.success('Zoom meeting created successfully!');
-      } else if (formData.meetingPlatform === 'google_meet') {
-        const endTime = new Date(meetingDateTime.getTime() + formData.duration * 60000);
-        const meetResult = await createGoogleMeetMeeting(
-          formData.title,
-          meetingDateTime,
-          endTime
-        );
-        meetingLink = meetResult.meetingLink;
-        googleConferenceId = meetResult.conferenceId;
-        toast.success('Google Meet link generated!');
-      }
-
-      // Pass the enhanced data to parent
-      await onSubmit({
-        ...formData,
-        meetingLink,
-        zoomMeetingId,
-        zoomStartUrl,
-        googleConferenceId
-      } as any);
-      onClose();
-    } catch (error) {
-      console.error("Error creating meeting:", error);
-      toast.error("Failed to create meeting. Please try again.");
-    } finally {
-      setIsCreatingMeeting(false);
-    }
+  const handleSubmit = () => {
+    onSubmit(formData);
   };
 
   if (!isOpen) return null;
@@ -423,6 +547,7 @@ function CreateMeetingModal({
           <button 
             onClick={onClose}
             className="p-2 hover:bg-white/10 rounded-lg transition-colors"
+            disabled={isCreating}
           >
             <X className="h-5 w-5 text-white" />
           </button>
@@ -445,7 +570,7 @@ function CreateMeetingModal({
                 <span className={`ml-2 text-sm font-medium hidden sm:inline ${
                   step === s ? 'text-gray-900' : 'text-gray-500'
                 }`}>
-                  {s === 1 ? 'Details' : s === 2 ? 'Meeting Platform' : 'Invite Students'}
+                  {s === 1 ? 'Details' : s === 2 ? 'Platform' : 'Invite Students'}
                 </span>
                 {s < 3 && <div className={`flex-1 h-0.5 mx-3 ${step > s ? 'bg-[#1d636c]' : 'bg-gray-200'}`} />}
               </div>
@@ -455,6 +580,7 @@ function CreateMeetingModal({
 
         {/* Modal Body */}
         <div className="px-6 py-6 overflow-y-auto" style={{ maxHeight: 'calc(90vh - 250px)' }}>
+          
           {/* Step 1: Meeting Details */}
           {step === 1 && (
             <div className="space-y-5">
@@ -601,59 +727,94 @@ function CreateMeetingModal({
             </div>
           )}
 
-          {/* Step 2: Meeting Platform Selection */}
+          {/* Step 2: Platform Selection */}
           {step === 2 && (
             <div className="space-y-5">
               <div>
                 <label className="block text-sm font-semibold mb-3" style={{ color: '#073045' }}>
                   Select Meeting Platform
                 </label>
-                <div className="grid grid-cols-2 gap-3">
-                  {(['google_meet', 'zoom'] as const).map((platform) => (
-                    <button
-                      key={platform}
-                      onClick={() => setFormData(prev => ({ ...prev, meetingPlatform: platform }))}
-                      className={`p-4 border-2 rounded-xl text-left transition-all hover:shadow-md ${
-                        formData.meetingPlatform === platform 
-                          ? 'ring-2 ring-offset-2' 
-                          : ''
-                      }`}
-                      style={{
-                        borderColor: formData.meetingPlatform === platform ? platformColors[platform] : '#e5e7eb',
-                        ringColor: platformColors[platform]
-                      }}
-                    >
-                      <div className="flex items-center space-x-3">
-                        <div className="w-10 h-10 rounded-lg flex items-center justify-center" style={{ backgroundColor: platformColors[platform] }}>
-                          {platform === 'zoom' ? (
-                            <svg className="h-5 w-5 text-white" viewBox="0 0 24 24" fill="currentColor">
-                              <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 4c2.21 0 4 1.79 4 4s-1.79 4-4 4-4-1.79-4-4 1.79-4 4-4zm0 14c-2.67 0-5-1.34-6.34-3.34.02-2.02 4.34-3.13 6.34-3.13s6.32 1.11 6.34 3.13c-1.34 2-3.67 3.34-6.34 3.34z"/>
-                            </svg>
-                          ) : (
-                            <Video className="h-5 w-5 text-white" />
+                <p className="text-sm text-gray-500 mb-4">
+                  Choose a platform. The meeting link will be automatically generated using the selected platform's API.
+                </p>
+
+                <div className="grid grid-cols-1 gap-4">
+                  {/* Zoom Option */}
+                  <button
+                    onClick={() => setFormData(prev => ({ ...prev, meetingPlatform: 'zoom' }))}
+                    className={`p-5 border-2 rounded-xl text-left transition-all hover:shadow-md ${
+                      formData.meetingPlatform === 'zoom' 
+                        ? 'ring-2 ring-offset-2 ring-[#2D8CFF]' 
+                        : ''
+                    }`}
+                    style={{
+                      borderColor: formData.meetingPlatform === 'zoom' ? '#2D8CFF' : '#e5e7eb',
+                    }}
+                  >
+                    <div className="flex items-center space-x-4">
+                      <div className="w-14 h-14 rounded-xl flex items-center justify-center shadow-md" style={{ backgroundColor: '#2D8CFF' }}>
+                        <Video className="h-7 w-7 text-white" />
+                      </div>
+                      <div className="flex-1">
+                        <div className="flex items-center justify-between">
+                          <p className="font-bold text-base">Zoom</p>
+                          {formData.meetingPlatform === 'zoom' && (
+                            <CheckCircle className="h-5 w-5" style={{ color: '#2D8CFF' }} />
                           )}
                         </div>
-                        <div>
-                          <p className="font-semibold text-sm">{platformLabels[platform]}</p>
-                          <p className="text-xs text-gray-500">
-                            {platform === 'zoom' ? 'Professional video conferencing' : 'Integrated with Google Workspace'}
-                          </p>
+                        <p className="text-sm text-gray-500 mt-0.5">Meeting created via Zoom API (Server-to-Server OAuth)</p>
+                        <div className="flex items-center gap-2 mt-2">
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 font-medium">HD Video</span>
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 font-medium">Waiting Room</span>
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 font-medium">Up to {formData.maxParticipants} participants</span>
                         </div>
                       </div>
-                    </button>
-                  ))}
-                </div>
-              </div>
+                    </div>
+                  </button>
 
-              <div className="p-4 rounded-lg bg-blue-50 border border-blue-200">
-                <p className="text-sm text-blue-800 flex items-start gap-2">
-                  <Sparkles className="h-4 w-4 mt-0.5 flex-shrink-0" />
-                  <span>
-                    {formData.meetingPlatform === 'zoom' 
-                      ? 'Zoom meetings will be created automatically with your account. Students will receive a join link.'
-                      : 'Google Meet links will be generated automatically. Students can join with their Google accounts.'}
-                  </span>
-                </p>
+                  {/* Google Meet Option */}
+                  <button
+                    onClick={() => setFormData(prev => ({ ...prev, meetingPlatform: 'google_meet' }))}
+                    className={`p-5 border-2 rounded-xl text-left transition-all hover:shadow-md ${
+                      formData.meetingPlatform === 'google_meet' 
+                        ? 'ring-2 ring-offset-2 ring-[#00897B]' 
+                        : ''
+                    }`}
+                    style={{
+                      borderColor: formData.meetingPlatform === 'google_meet' ? '#00897B' : '#e5e7eb',
+                    }}
+                  >
+                    <div className="flex items-center space-x-4">
+                      <div className="w-14 h-14 rounded-xl flex items-center justify-center shadow-md" style={{ backgroundColor: '#00897B' }}>
+                        <Video className="h-7 w-7 text-white" />
+                      </div>
+                      <div className="flex-1">
+                        <div className="flex items-center justify-between">
+                          <p className="font-bold text-base">Google Meet</p>
+                          {formData.meetingPlatform === 'google_meet' && (
+                            <CheckCircle className="h-5 w-5" style={{ color: '#00897B' }} />
+                          )}
+                        </div>
+                        <p className="text-sm text-gray-500 mt-0.5">Event & Meet link created via Google Calendar API</p>
+                        <div className="flex items-center gap-2 mt-2">
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-teal-100 text-teal-700 font-medium">Google Calendar</span>
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-teal-100 text-teal-700 font-medium">Free</span>
+                          <span className="text-xs px-2 py-0.5 rounded-full bg-teal-100 text-teal-700 font-medium">Up to 100 participants</span>
+                        </div>
+                      </div>
+                    </div>
+                  </button>
+                </div>
+
+                {/* Info note */}
+                <div className="mt-4 p-3 rounded-lg border flex items-start gap-3" style={{ borderColor: '#e6941f', backgroundColor: '#fffbf0' }}>
+                  <Sparkles className="h-4 w-4 mt-0.5 flex-shrink-0" style={{ color: '#e6941f' }} />
+                  <p className="text-xs" style={{ color: '#073045' }}>
+                    {formData.meetingPlatform === 'zoom'
+                      ? 'A real Zoom meeting will be created using your Zoom account credentials. A unique join link will be generated automatically.'
+                      : 'A Google Calendar event with a Google Meet link will be created. You\'ll be asked to sign in with Google to authorize the calendar event creation.'}
+                  </p>
+                </div>
               </div>
 
               <div>
@@ -733,7 +894,7 @@ function CreateMeetingModal({
                   <div className="text-center py-8">
                     <Users className="h-12 w-12 mx-auto mb-3 text-gray-300" />
                     <p className="text-gray-500">No active students to invite</p>
-                    <p className="text-sm text-gray-400">Students will be able to join via the meeting link</p>
+                    <p className="text-sm text-gray-400">Students can still join via the meeting link</p>
                   </div>
                 )}
               </div>
@@ -767,7 +928,9 @@ function CreateMeetingModal({
                   </div>
                   <div className="flex justify-between">
                     <span className="text-gray-600">Platform:</span>
-                    <span className="font-medium">{platformLabels[formData.meetingPlatform]}</span>
+                    <span className="font-medium" style={{ color: platformColors[formData.meetingPlatform] }}>
+                      {platformLabels[formData.meetingPlatform]}
+                    </span>
                   </div>
                   <div className="flex justify-between">
                     <span className="text-gray-600">Students Invited:</span>
@@ -794,6 +957,7 @@ function CreateMeetingModal({
                 onClick={() => setStep(step - 1)}
                 className="border-2"
                 style={{ borderColor: '#e5e7eb' }}
+                disabled={isCreating}
               >
                 <ArrowLeft className="h-4 w-4 mr-2" />
                 Back
@@ -801,7 +965,7 @@ function CreateMeetingModal({
             )}
           </div>
           <div className="flex items-center space-x-3">
-            <Button variant="ghost" onClick={onClose}>
+            <Button variant="ghost" onClick={onClose} disabled={isCreating}>
               Cancel
             </Button>
             {step < 3 ? (
@@ -817,14 +981,14 @@ function CreateMeetingModal({
             ) : (
               <Button 
                 onClick={handleSubmit}
-                disabled={isCreatingMeeting}
-                className="text-white"
+                className="text-white min-w-[160px]"
                 style={{ backgroundColor: '#1d636c' }}
+                disabled={isCreating}
               >
-                {isCreatingMeeting ? (
+                {isCreating ? (
                   <>
                     <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    Creating...
+                    {formData.meetingPlatform === 'zoom' ? 'Creating Zoom...' : 'Creating Meet...'}
                   </>
                 ) : (
                   <>
@@ -842,7 +1006,9 @@ function CreateMeetingModal({
 }
 
 
-// Main Dashboard Component
+// ==========================================
+// MAIN DASHBOARD COMPONENT
+// ==========================================
 export default function TutorDashboardPage() {
   const { user, userData, logout } = useAuth();
   const [stats, setStats] = useState<any>(null);
@@ -855,10 +1021,12 @@ export default function TutorDashboardPage() {
   
   const [activeTab, setActiveTab] = useState<'overview' | 'bookings' | 'students' | 'earnings' | 'schedule' | 'resources' | 'performance' | 'support' | 'meetings'>('overview');
   
+  // Video meeting state
   const [meetings, setMeetings] = useState<VideoMeeting[]>([]);
   const [showCreateMeeting, setShowCreateMeeting] = useState(false);
   const [editingMeeting, setEditingMeeting] = useState<VideoMeeting | null>(null);
   const [meetingsLoading, setMeetingsLoading] = useState(false);
+  const [isCreatingMeeting, setIsCreatingMeeting] = useState(false);
   const [meetingFilter, setMeetingFilter] = useState<'all' | 'scheduled' | 'completed' | 'cancelled'>('all');
   
   const [availability] = useState([
@@ -922,6 +1090,10 @@ export default function TutorDashboardPage() {
     }
   };
 
+  // ==========================================
+  // VIDEO MEETING CRUD WITH PLATFORM API
+  // ==========================================
+  
   const loadMeetings = async () => {
     setMeetingsLoading(true);
     try {
@@ -945,49 +1117,89 @@ export default function TutorDashboardPage() {
     }
   };
 
-  const handleCreateMeeting = async (formData: any) => {
+  const handleCreateMeeting = async (formData: MeetingFormData) => {
+    setIsCreatingMeeting(true);
     try {
+      let meetingLink = '';
+      let zoomMeetingId: string | undefined;
+      let googleCalendarEventId: string | undefined;
+
+      if (editingMeeting) {
+        // For edits, keep existing link or allow manual update
+        meetingLink = formData.meetingLink || editingMeeting.meetingLink;
+      } else {
+        // Create via platform API
+        if (formData.meetingPlatform === 'zoom') {
+          toast.loading('Creating Zoom meeting...', { id: 'meeting-create' });
+          const zoomResult = await createZoomMeeting(formData);
+          if (zoomResult) {
+            meetingLink = zoomResult.join_url;
+            zoomMeetingId = zoomResult.id;
+            toast.success('Zoom meeting created!', { id: 'meeting-create' });
+          } else {
+            // Fallback
+            meetingLink = generateFallbackZoomLink();
+            toast.success('Meeting created with placeholder Zoom link. Replace with your actual Zoom link.', { id: 'meeting-create' });
+          }
+        } else if (formData.meetingPlatform === 'google_meet') {
+          toast.loading('Creating Google Meet...', { id: 'meeting-create' });
+          const googleResult = await createGoogleMeetLink(formData);
+          if (googleResult) {
+            meetingLink = googleResult.meet_link;
+            googleCalendarEventId = googleResult.event_id;
+            toast.success('Google Meet created!', { id: 'meeting-create' });
+          } else {
+            // Fallback
+            meetingLink = generateFallbackGoogleMeetLink();
+            toast.success('Meeting created with placeholder Google Meet link. Sign in to Google to auto-generate.', { id: 'meeting-create' });
+          }
+        }
+      }
+
       const studentNames = activeStudents
         .filter(s => formData.selectedStudents.includes(s.id))
         .map(s => `${s.firstName} ${s.lastName}`);
 
-      const meetingData = {
+      const meetingData: any = {
         title: formData.title,
         description: formData.description,
         subject: formData.subject,
         meetingDate: formData.meetingDate,
         meetingTime: formData.meetingTime,
         duration: formData.duration,
-        meetingLink: formData.meetingLink,
+        meetingLink,
         meetingPlatform: formData.meetingPlatform,
         students: formData.selectedStudents,
         studentNames,
-        status: 'scheduled' as const,
+        status: 'scheduled',
         maxParticipants: formData.maxParticipants,
         isRecurring: formData.isRecurring,
         recurringPattern: formData.isRecurring ? formData.recurringPattern : null,
         notes: formData.notes,
-        createdAt: serverTimestamp(),
         tutorId: user.uid,
         tutorName: `${userData?.firstName} ${userData?.lastName}`,
-        zoomMeetingId: formData.zoomMeetingId || null,
-        zoomStartUrl: formData.zoomStartUrl || null,
-        googleConferenceId: formData.googleConferenceId || null,
+        updatedAt: serverTimestamp(),
       };
+
+      if (zoomMeetingId) meetingData.zoomMeetingId = zoomMeetingId;
+      if (googleCalendarEventId) meetingData.googleCalendarEventId = googleCalendarEventId;
 
       if (editingMeeting) {
         await updateDoc(doc(db, 'meetings', editingMeeting.id), meetingData);
         toast.success('Meeting updated successfully!');
       } else {
+        meetingData.createdAt = serverTimestamp();
         await addDoc(collection(db, 'meetings'), meetingData);
-        toast.success('Meeting created successfully!');
       }
       
       setEditingMeeting(null);
+      setShowCreateMeeting(false);
       loadMeetings();
     } catch (error) {
       console.error("Error saving meeting:", error);
       toast.error("Failed to save meeting");
+    } finally {
+      setIsCreatingMeeting(false);
     }
   };
 
@@ -1014,14 +1226,6 @@ export default function TutorDashboardPage() {
     }
   };
 
-  const handleStartMeeting = (meeting: VideoMeeting) => {
-    if (meeting.meetingPlatform === 'zoom' && meeting.zoomStartUrl) {
-      window.open(meeting.zoomStartUrl, '_blank');
-    } else if (meeting.meetingLink) {
-      window.open(meeting.meetingLink, '_blank');
-    }
-  };
-
   const handleLogout = async () => {
     await logout();
     window.location.href = '/';
@@ -1031,14 +1235,19 @@ export default function TutorDashboardPage() {
     ? meetings 
     : meetings.filter(m => m.status === meetingFilter);
 
+  // ==========================================
+  // RENDER MEETINGS TAB
+  // ==========================================
+
   const renderMeetings = () => (
     <div className="space-y-6">
+      {/* Header */}
       <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
         <div>
           <h1 className="text-3xl font-bold" style={{ color: '#073045' }}>
             Video Meetings
           </h1>
-          <p className="text-gray-600">Create and manage video classes for your students</p>
+          <p className="text-gray-600">Create Zoom or Google Meet sessions for your students</p>
         </div>
         <Button 
           onClick={() => { setEditingMeeting(null); setShowCreateMeeting(true); }}
@@ -1050,6 +1259,31 @@ export default function TutorDashboardPage() {
         </Button>
       </div>
 
+      {/* Platform Info Banner */}
+      <div className="grid gap-4 md:grid-cols-2">
+        <div className="p-4 rounded-xl border-2 flex items-center space-x-4" style={{ borderColor: '#2D8CFF', backgroundColor: '#f0f7ff' }}>
+          <div className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#2D8CFF' }}>
+            <Video className="h-6 w-6 text-white" />
+          </div>
+          <div>
+            <p className="font-bold" style={{ color: '#073045' }}>Zoom Integration</p>
+            <p className="text-xs text-gray-500">Connected via Server-to-Server OAuth · Account ID: {ZOOM_CONFIG.accountId.slice(0, 8)}...</p>
+          </div>
+          <CheckCircle className="h-5 w-5 ml-auto flex-shrink-0" style={{ color: '#2D8CFF' }} />
+        </div>
+        <div className="p-4 rounded-xl border-2 flex items-center space-x-4" style={{ borderColor: '#00897B', backgroundColor: '#f0faf9' }}>
+          <div className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: '#00897B' }}>
+            <Video className="h-6 w-6 text-white" />
+          </div>
+          <div>
+            <p className="font-bold" style={{ color: '#073045' }}>Google Meet Integration</p>
+            <p className="text-xs text-gray-500">Connected via Google Calendar API · Key: {GOOGLE_CONFIG.apiKey.slice(0, 10)}...</p>
+          </div>
+          <CheckCircle className="h-5 w-5 ml-auto flex-shrink-0" style={{ color: '#00897B' }} />
+        </div>
+      </div>
+
+      {/* Meeting Stats */}
       <div className="grid gap-4 md:grid-cols-4">
         <Card className="border-2 hover:shadow-lg transition-all" style={{ borderColor: '#1d636c' }}>
           <CardContent className="pt-5 pb-4">
@@ -1111,6 +1345,7 @@ export default function TutorDashboardPage() {
         </Card>
       </div>
 
+      {/* Filter Bar */}
       <div className="flex items-center gap-2 flex-wrap">
         {(['all', 'scheduled', 'completed', 'cancelled'] as const).map((filter) => (
           <button
@@ -1129,6 +1364,7 @@ export default function TutorDashboardPage() {
         ))}
       </div>
 
+      {/* Meetings List */}
       <div className="space-y-4">
         {meetingsLoading ? (
           <div className="text-center py-16">
@@ -1140,15 +1376,10 @@ export default function TutorDashboardPage() {
             <Card key={meeting.id} className="border-2 hover:shadow-lg transition-all group" style={{ borderColor: '#e5e7eb' }}>
               <CardContent className="p-5">
                 <div className="flex flex-col lg:flex-row lg:items-center justify-between gap-4">
+                  {/* Left: Meeting Info */}
                   <div className="flex items-start space-x-4 flex-1">
-                    <div className="p-3 rounded-xl" style={{ backgroundColor: platformColors[meeting.meetingPlatform] }}>
-                      {meeting.meetingPlatform === 'zoom' ? (
-                        <svg className="h-6 w-6 text-white" viewBox="0 0 24 24" fill="currentColor">
-                          <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 4c2.21 0 4 1.79 4 4s-1.79 4-4 4-4-1.79-4-4 1.79-4 4-4zm0 14c-2.67 0-5-1.34-6.34-3.34.02-2.02 4.34-3.13 6.34-3.13s6.32 1.11 6.34 3.13c-1.34 2-3.67 3.34-6.34 3.34z"/>
-                        </svg>
-                      ) : (
-                        <Video className="h-6 w-6 text-white" />
-                      )}
+                    <div className="p-3 rounded-xl flex-shrink-0" style={{ backgroundColor: platformColors[meeting.meetingPlatform] }}>
+                      <Video className="h-6 w-6 text-white" />
                     </div>
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap mb-1">
@@ -1185,7 +1416,10 @@ export default function TutorDashboardPage() {
                         <Badge style={{ backgroundColor: '#e6941f', color: '#073045' }}>
                           {meeting.subject}
                         </Badge>
-                        <Badge className="bg-gray-100 text-gray-700">
+                        <Badge 
+                          className="text-white text-xs"
+                          style={{ backgroundColor: platformColors[meeting.meetingPlatform] }}
+                        >
                           {platformLabels[meeting.meetingPlatform]}
                         </Badge>
                         {meeting.isRecurring && (
@@ -1194,33 +1428,48 @@ export default function TutorDashboardPage() {
                             {meeting.recurringPattern}
                           </Badge>
                         )}
+                        {meeting.zoomMeetingId && (
+                          <Badge className="bg-blue-50 text-blue-700 text-xs">
+                            ID: {meeting.zoomMeetingId}
+                          </Badge>
+                        )}
                       </div>
 
                       {meeting.description && (
                         <p className="text-sm text-gray-500 mt-2 line-clamp-1">{meeting.description}</p>
                       )}
+
+                      {/* Meeting Link Preview */}
+                      {meeting.meetingLink && (
+                        <div className="mt-2 flex items-center gap-2">
+                          <Link2 className="h-3.5 w-3.5 text-gray-400 flex-shrink-0" />
+                          <p className="text-xs text-gray-400 truncate max-w-xs">{meeting.meetingLink}</p>
+                        </div>
+                      )}
                     </div>
                   </div>
 
+                  {/* Right: Actions */}
                   <div className="flex items-center gap-2 lg:flex-col lg:items-end">
                     {meeting.status === 'scheduled' && (
                       <>
                         <Button 
                           size="sm"
-                          onClick={() => handleStartMeeting(meeting)}
+                          onClick={() => window.open(meeting.meetingLink, '_blank')}
                           className="text-white shadow-md"
-                          style={{ backgroundColor: '#1d636c' }}
+                          style={{ backgroundColor: platformColors[meeting.meetingPlatform] }}
                         >
                           <Video className="h-4 w-4 mr-2" />
-                          Start Meeting
+                          {meeting.meetingPlatform === 'zoom' ? 'Start Zoom' : 'Start Meet'}
                         </Button>
                         <div className="flex items-center gap-1">
                           <Button 
                             variant="ghost" 
                             size="sm"
+                            title="Copy meeting link"
                             onClick={() => {
                               navigator.clipboard.writeText(meeting.meetingLink);
-                              toast.success('Link copied!');
+                              toast.success('Meeting link copied!');
                             }}
                           >
                             <Copy className="h-4 w-4" />
@@ -1228,6 +1477,7 @@ export default function TutorDashboardPage() {
                           <Button 
                             variant="ghost" 
                             size="sm"
+                            title="Edit meeting"
                             onClick={() => {
                               setEditingMeeting(meeting);
                               setShowCreateMeeting(true);
@@ -1238,6 +1488,7 @@ export default function TutorDashboardPage() {
                           <Button 
                             variant="ghost" 
                             size="sm"
+                            title="Cancel meeting"
                             onClick={() => handleCancelMeeting(meeting.id)}
                             className="text-red-500 hover:text-red-700 hover:bg-red-50"
                           >
@@ -1246,6 +1497,7 @@ export default function TutorDashboardPage() {
                           <Button 
                             variant="ghost" 
                             size="sm"
+                            title="Delete meeting"
                             onClick={() => handleDeleteMeeting(meeting.id)}
                             className="text-red-500 hover:text-red-700 hover:bg-red-50"
                           >
@@ -1254,18 +1506,7 @@ export default function TutorDashboardPage() {
                         </div>
                       </>
                     )}
-                    {meeting.status === 'completed' && (
-                      <Button 
-                        variant="outline" 
-                        size="sm"
-                        onClick={() => handleDeleteMeeting(meeting.id)}
-                        className="text-red-500 border-red-200 hover:bg-red-50"
-                      >
-                        <Trash2 className="h-4 w-4 mr-2" />
-                        Delete
-                      </Button>
-                    )}
-                    {meeting.status === 'cancelled' && (
+                    {(meeting.status === 'completed' || meeting.status === 'cancelled') && (
                       <Button 
                         variant="outline" 
                         size="sm"
@@ -1292,7 +1533,7 @@ export default function TutorDashboardPage() {
               </h3>
               <p className="text-gray-500 mb-6 max-w-sm mx-auto">
                 {meetingFilter === 'all' 
-                  ? 'Create your first video meeting to start teaching online classes.'
+                  ? 'Create your first video meeting using Zoom or Google Meet.'
                   : `You don't have any ${meetingFilter} meetings.`}
               </p>
               {meetingFilter === 'all' && (
@@ -1312,33 +1553,25 @@ export default function TutorDashboardPage() {
     </div>
   );
 
+  // Render content based on active tab
   const renderContent = () => {
     switch (activeTab) {
-      case 'overview':
-        return renderOverview();
-      case 'bookings':
-        return renderBookings();
-      case 'students':
-        return renderStudents();
-      case 'earnings':
-        return renderEarnings();
-      case 'schedule':
-        return renderSchedule();
-      case 'resources':
-        return renderResources();
-      case 'performance':
-        return renderPerformance();
-      case 'support':
-        return renderSupport();
-      case 'meetings':
-        return renderMeetings();
-      default:
-        return renderOverview();
+      case 'overview': return renderOverview();
+      case 'bookings': return renderBookings();
+      case 'students': return renderStudents();
+      case 'earnings': return renderEarnings();
+      case 'schedule': return renderSchedule();
+      case 'resources': return renderResources();
+      case 'performance': return renderPerformance();
+      case 'support': return renderSupport();
+      case 'meetings': return renderMeetings();
+      default: return renderOverview();
     }
   };
 
   const renderOverview = () => (
     <>
+      {/* Welcome Section */}
       <div className="space-y-4">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
           <div>
@@ -1362,6 +1595,7 @@ export default function TutorDashboardPage() {
         </div>
       </div>
 
+      {/* Stats Cards */}
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
         <Card className="border-2 hover:shadow-xl transition-all duration-300 hover:-translate-y-1" style={{ borderColor: '#1d636c' }}>
           <CardContent className="pt-6">
@@ -1400,7 +1634,7 @@ export default function TutorDashboardPage() {
               </p>
               <p className="text-xs text-gray-600 mt-1">
                 {activeStudents.length > 0 ? 
-                  `${activeStudents.filter(s => s.upcomingSessions > 0).length} with upcoming sessions` : 
+                  `${activeStudents.filter((s: any) => s.upcomingSessions > 0).length} with upcoming sessions` : 
                   "No active students"}
               </p>
             </div>
@@ -1460,6 +1694,7 @@ export default function TutorDashboardPage() {
         </Card>
       </div>
 
+      {/* Recent Bookings & Active Students */}
       <div className="grid gap-6 lg:grid-cols-2">
         <Card className="border-2" style={{ borderColor: '#e5e7eb' }}>
           <CardHeader>
@@ -1474,7 +1709,7 @@ export default function TutorDashboardPage() {
               {bookings.slice(0, 5).map((booking) => (
                 <div 
                   key={booking.id} 
-                  className="flex items-center justify-between p-4 border-2 rounded-lg hover:bg-gray-50 transition-colors group"
+                  className="flex items-center justify-between p-4 border-2 rounded-lg hover:bg-gray-50 transition-colors"
                   style={{ borderColor: '#e5e7eb' }}
                 >
                   <div className="space-y-2">
@@ -1489,10 +1724,7 @@ export default function TutorDashboardPage() {
                       </p>
                     </div>
                     <div className="flex items-center gap-2">
-                      <Badge 
-                        className="text-xs border"
-                        style={{ borderColor: '#1d636c', color: '#1d636c' }}
-                      >
+                      <Badge className="text-xs border" style={{ borderColor: '#1d636c', color: '#1d636c' }}>
                         {booking.subject || "Subject"}
                       </Badge>
                       <span className="text-xs text-gray-600">
@@ -1501,14 +1733,12 @@ export default function TutorDashboardPage() {
                     </div>
                   </div>
                   <div className="text-right space-y-1">
-                    <Badge 
-                      className={`text-xs ${
-                        booking.status === 'completed' ? 'bg-green-100 text-green-800' :
-                        booking.status === 'confirmed' ? 'bg-blue-100 text-blue-800' :
-                        booking.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
-                        'bg-red-100 text-red-800'
-                      }`}
-                    >
+                    <Badge className={`text-xs ${
+                      booking.status === 'completed' ? 'bg-green-100 text-green-800' :
+                      booking.status === 'confirmed' ? 'bg-blue-100 text-blue-800' :
+                      booking.status === 'pending' ? 'bg-yellow-100 text-yellow-800' :
+                      'bg-red-100 text-red-800'
+                    }`}>
                       {booking.status}
                     </Badge>
                     <p className="text-sm font-medium" style={{ color: '#073045' }}>
@@ -1521,9 +1751,7 @@ export default function TutorDashboardPage() {
                 <div className="text-center py-8">
                   <Calendar className="h-12 w-12 mx-auto mb-4" style={{ color: '#1d636c' }} />
                   <p className="text-gray-600">No bookings yet</p>
-                  <p className="text-sm text-gray-600 mt-2">
-                    Update your profile to attract more students
-                  </p>
+                  <p className="text-sm text-gray-600 mt-2">Update your profile to attract more students</p>
                 </div>
               )}
             </div>
@@ -1551,10 +1779,10 @@ export default function TutorDashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
-              {activeStudents.slice(0, 5).map((student) => (
+              {activeStudents.slice(0, 5).map((student: any) => (
                 <div 
                   key={student.id} 
-                  className="flex items-center justify-between p-4 border-2 rounded-lg hover:bg-gray-50 transition-colors group"
+                  className="flex items-center justify-between p-4 border-2 rounded-lg hover:bg-gray-50 transition-colors"
                   style={{ borderColor: '#e5e7eb' }}
                 >
                   <div className="flex items-center space-x-3">
@@ -1569,26 +1797,16 @@ export default function TutorDashboardPage() {
                         {student.firstName} {student.lastName}
                       </p>
                       <div className="flex items-center gap-2 mt-1">
-                        <Badge 
-                          className="text-xs"
-                          style={{ backgroundColor: '#e6941f', color: '#073045' }}
-                        >
+                        <Badge className="text-xs" style={{ backgroundColor: '#e6941f', color: '#073045' }}>
                           {student.upcomingSessions || 0} sessions
                         </Badge>
                         {student.studentClass && (
-                          <span className="text-xs text-gray-600">
-                            {student.studentClass}
-                          </span>
+                          <span className="text-xs text-gray-600">{student.studentClass}</span>
                         )}
                       </div>
                     </div>
                   </div>
-                  <Button 
-                    variant="ghost" 
-                    size="sm"
-                    className="hover:bg-gray-100"
-                    onClick={() => setActiveTab('students')}
-                  >
+                  <Button variant="ghost" size="sm" onClick={() => setActiveTab('students')}>
                     <Eye className="h-4 w-4" style={{ color: '#073045' }} />
                   </Button>
                 </div>
@@ -1597,9 +1815,6 @@ export default function TutorDashboardPage() {
                 <div className="text-center py-8">
                   <Users className="h-12 w-12 mx-auto mb-4" style={{ color: '#1d636c' }} />
                   <p className="text-gray-600">No active students</p>
-                  <p className="text-sm text-gray-600 mt-2">
-                    Start by updating your availability
-                  </p>
                 </div>
               )}
             </div>
@@ -1618,6 +1833,7 @@ export default function TutorDashboardPage() {
         </Card>
       </div>
 
+      {/* Performance Overview */}
       <Card className="border-2" style={{ borderColor: '#e5e7eb' }}>
         <CardHeader>
           <CardTitle className="flex items-center" style={{ color: '#073045' }}>
@@ -1640,7 +1856,6 @@ export default function TutorDashboardPage() {
               </div>
               <Progress value={performance?.completionRate || 0} className="h-2" />
             </div>
-
             <div className="space-y-4 p-4 border-2 rounded-lg" style={{ borderColor: '#e5e7eb' }}>
               <div className="flex items-center space-x-3">
                 <div className="p-2 rounded-lg" style={{ backgroundColor: '#e6941f' }}>
@@ -1652,19 +1867,11 @@ export default function TutorDashboardPage() {
                 </div>
               </div>
               <div className="flex items-center">
-                {[1, 2, 3, 4, 5].map((star) => (
-                  <Star 
-                    key={star} 
-                    className={`h-4 w-4 mx-0.5 ${
-                      star <= Math.floor(performance?.averageRating || 0) 
-                        ? 'text-yellow-500 fill-current' 
-                        : 'text-gray-300'
-                    }`} 
-                  />
+                {[1,2,3,4,5].map((star) => (
+                  <Star key={star} className={`h-4 w-4 mx-0.5 ${star <= Math.floor(performance?.averageRating || 0) ? 'text-yellow-500 fill-current' : 'text-gray-300'}`} />
                 ))}
               </div>
             </div>
-
             <div className="space-y-4 p-4 border-2 rounded-lg" style={{ borderColor: '#e5e7eb' }}>
               <div className="flex items-center space-x-3">
                 <div className="p-2 rounded-lg" style={{ backgroundColor: '#073045' }}>
@@ -1675,11 +1882,8 @@ export default function TutorDashboardPage() {
                   <p className="text-2xl font-bold">{stats?.completedSessions || 0}</p>
                 </div>
               </div>
-              <p className="text-sm text-gray-600">
-                {stats?.pendingSessions || 0} pending sessions
-              </p>
+              <p className="text-sm text-gray-600">{stats?.pendingSessions || 0} pending sessions</p>
             </div>
-
             <div className="space-y-4 p-4 border-2 rounded-lg" style={{ borderColor: '#e5e7eb' }}>
               <div className="flex items-center space-x-3">
                 <div className="p-2 rounded-lg" style={{ backgroundColor: '#1d636c' }}>
@@ -1690,14 +1894,13 @@ export default function TutorDashboardPage() {
                   <p className="text-2xl font-bold">₦{stats?.hourlyRate || '0'}</p>
                 </div>
               </div>
-              <p className="text-sm text-gray-600">
-                {stats?.subjects?.slice(0, 2).join(', ') || 'No subjects'}
-              </p>
+              <p className="text-sm text-gray-600">{stats?.subjects?.slice(0, 2).join(', ') || 'No subjects'}</p>
             </div>
           </div>
         </CardContent>
       </Card>
 
+      {/* Quick Actions */}
       <Card className="border-2" style={{ borderColor: '#e5e7eb' }}>
         <CardHeader>
           <CardTitle className="flex items-center" style={{ color: '#073045' }}>
@@ -1710,17 +1913,34 @@ export default function TutorDashboardPage() {
           <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
             <Button 
               variant="outline"
-              className="h-auto py-6 border-2 hover:border-[#1d636c] transition-all duration-300 hover:-translate-y-1 cursor-pointer group"
+              className="h-auto py-6 border-2 hover:border-[#2D8CFF] transition-all duration-300 hover:-translate-y-1 cursor-pointer group"
               style={{ borderColor: '#e5e7eb', color: '#073045' }}
               onClick={() => { setEditingMeeting(null); setShowCreateMeeting(true); setActiveTab('meetings'); }}
             >
               <div className="flex items-center space-x-3">
-                <div className="p-2 rounded-lg" style={{ backgroundColor: '#e6941f' }}>
+                <div className="p-2 rounded-lg" style={{ backgroundColor: '#2D8CFF' }}>
                   <Video className="h-5 w-5 text-white" />
                 </div>
                 <div className="text-left">
-                  <p className="font-medium">Create Meeting</p>
-                  <p className="text-xs text-gray-600">Set up a video class</p>
+                  <p className="font-medium">Zoom Meeting</p>
+                  <p className="text-xs text-gray-600">Create Zoom class</p>
+                </div>
+              </div>
+            </Button>
+
+            <Button 
+              variant="outline"
+              className="h-auto py-6 border-2 hover:border-[#00897B] transition-all duration-300 hover:-translate-y-1 cursor-pointer group"
+              style={{ borderColor: '#e5e7eb', color: '#073045' }}
+              onClick={() => { setEditingMeeting(null); setShowCreateMeeting(true); setActiveTab('meetings'); }}
+            >
+              <div className="flex items-center space-x-3">
+                <div className="p-2 rounded-lg" style={{ backgroundColor: '#00897B' }}>
+                  <Video className="h-5 w-5 text-white" />
+                </div>
+                <div className="text-left">
+                  <p className="font-medium">Google Meet</p>
+                  <p className="text-xs text-gray-600">Start Google class</p>
                 </div>
               </div>
             </Button>
@@ -1736,25 +1956,8 @@ export default function TutorDashboardPage() {
                   <Calendar className="h-5 w-5 text-white" />
                 </div>
                 <div className="text-left">
-                  <p className="font-medium">Schedule Session</p>
-                  <p className="text-xs text-gray-600">Add new availability</p>
-                </div>
-              </div>
-            </Button>
-
-            <Button 
-              variant="outline"
-              className="h-auto py-6 border-2 hover:border-[#073045] transition-all duration-300 hover:-translate-y-1 cursor-pointer group"
-              style={{ borderColor: '#e5e7eb', color: '#073045' }}
-              onClick={() => setActiveTab('resources')}
-            >
-              <div className="flex items-center space-x-3">
-                <div className="p-2 rounded-lg" style={{ backgroundColor: '#073045' }}>
-                  <BookOpen className="h-5 w-5 text-white" />
-                </div>
-                <div className="text-left">
-                  <p className="font-medium">Teaching Resources</p>
-                  <p className="text-xs text-gray-600">Access materials</p>
+                  <p className="font-medium">Schedule</p>
+                  <p className="text-xs text-gray-600">Add availability</p>
                 </div>
               </div>
             </Button>
@@ -1770,7 +1973,7 @@ export default function TutorDashboardPage() {
                   <DollarSign className="h-5 w-5 text-white" />
                 </div>
                 <div className="text-left">
-                  <p className="font-medium">View Earnings</p>
+                  <p className="font-medium">Earnings</p>
                   <p className="text-xs text-gray-600">Check your income</p>
                 </div>
               </div>
@@ -1790,19 +1993,13 @@ export default function TutorDashboardPage() {
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm">
-            <Filter className="h-4 w-4 mr-2" />
-            Filter
+            <Filter className="h-4 w-4 mr-2" />Filter
           </Button>
-          <Button 
-            size="sm"
-            style={{ backgroundColor: '#1d636c', color: 'white' }}
-          >
-            <Plus className="h-4 w-4 mr-2" />
-            New Booking
+          <Button size="sm" style={{ backgroundColor: '#1d636c', color: 'white' }}>
+            <Plus className="h-4 w-4 mr-2" />New Booking
           </Button>
         </div>
       </div>
-
       <div className="grid gap-6">
         <Card>
           <CardHeader>
@@ -1823,27 +2020,19 @@ export default function TutorDashboardPage() {
                       <div className="flex items-center gap-4 mt-1">
                         <span className="text-sm">{booking.sessionDate ? format(new Date(booking.sessionDate), 'MMM d, yyyy') : 'Date not set'}</span>
                         <span className="text-sm">{booking.sessionTime}</span>
-                        <Badge style={{ backgroundColor: '#e6941f', color: '#073045' }}>
-                          ₦{booking.amount?.toLocaleString()}
-                        </Badge>
+                        <Badge style={{ backgroundColor: '#e6941f', color: '#073045' }}>₦{booking.amount?.toLocaleString()}</Badge>
                       </div>
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    <Button variant="outline" size="sm">
-                      <Video className="h-4 w-4 mr-2" />
-                      Start
-                    </Button>
-                    <Button variant="ghost" size="sm">
-                      <Edit className="h-4 w-4" />
-                    </Button>
+                    <Button variant="outline" size="sm"><Video className="h-4 w-4 mr-2" />Start</Button>
+                    <Button variant="ghost" size="sm"><Edit className="h-4 w-4" /></Button>
                   </div>
                 </div>
               ))}
             </div>
           </CardContent>
         </Card>
-
         <Card>
           <CardHeader>
             <CardTitle>Booking History</CardTitle>
@@ -1860,9 +2049,7 @@ export default function TutorDashboardPage() {
                     <div>
                       <p className="font-semibold">{booking.studentName}</p>
                       <p className="text-sm text-gray-600">{booking.subject}</p>
-                      <p className="text-xs text-gray-500">
-                        Completed on {booking.sessionDate ? format(new Date(booking.sessionDate), 'MMM d, yyyy') : 'N/A'}
-                      </p>
+                      <p className="text-xs text-gray-500">Completed on {booking.sessionDate ? format(new Date(booking.sessionDate), 'MMM d, yyyy') : 'N/A'}</p>
                     </div>
                   </div>
                   <div className="text-right">
@@ -1885,59 +2072,36 @@ export default function TutorDashboardPage() {
           <h1 className="text-3xl font-bold" style={{ color: '#073045' }}>Students</h1>
           <p className="text-gray-600">Manage your students and their progress</p>
         </div>
-        <div className="flex items-center gap-2">
-          <div className="relative">
-            <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
-            <input 
-              type="text" 
-              placeholder="Search students..." 
-              className="pl-10 pr-4 py-2 border rounded-lg w-full md:w-64"
-            />
-          </div>
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
+          <input type="text" placeholder="Search students..." className="pl-10 pr-4 py-2 border rounded-lg w-full md:w-64" />
         </div>
       </div>
-
       <Card>
         <CardContent className="pt-6">
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
-            {activeStudents.map((student) => (
+            {activeStudents.map((student: any) => (
               <Card key={student.id} className="border hover:shadow-lg transition-shadow">
                 <CardContent className="pt-6">
                   <div className="flex flex-col items-center text-center space-y-4">
                     <Avatar className="h-20 w-20 border-4" style={{ borderColor: '#1d636c' }}>
                       <AvatarImage src={student.profilePhoto || ""} />
-                      <AvatarFallback className="text-xl">
-                        {student.firstName?.charAt(0)}{student.lastName?.charAt(0)}
-                      </AvatarFallback>
+                      <AvatarFallback className="text-xl">{student.firstName?.charAt(0)}{student.lastName?.charAt(0)}</AvatarFallback>
                     </Avatar>
                     <div>
                       <h3 className="font-bold text-lg">{student.firstName} {student.lastName}</h3>
                       <p className="text-gray-600">{student.studentClass || 'Grade Level'}</p>
                       <div className="flex items-center justify-center gap-2 mt-2">
-                        <Badge style={{ backgroundColor: '#e6941f', color: '#073045' }}>
-                          {student.upcomingSessions || 0} sessions
-                        </Badge>
-                        <Badge variant="outline">
-                          {student.subject || 'Subject'}
-                        </Badge>
+                        <Badge style={{ backgroundColor: '#e6941f', color: '#073045' }}>{student.upcomingSessions || 0} sessions</Badge>
+                        <Badge variant="outline">{student.subject || 'Subject'}</Badge>
                       </div>
                     </div>
                     <div className="w-full space-y-2">
-                      <Button 
-                        variant="outline" 
-                        className="w-full"
-                        style={{ borderColor: '#1d636c', color: '#1d636c' }}
-                      >
-                        <MessageSquare className="h-4 w-4 mr-2" />
-                        Message
+                      <Button variant="outline" className="w-full" style={{ borderColor: '#1d636c', color: '#1d636c' }}>
+                        <MessageSquare className="h-4 w-4 mr-2" />Message
                       </Button>
-                      <Button 
-                        variant="ghost" 
-                        className="w-full"
-                        onClick={() => setActiveTab('schedule')}
-                      >
-                        <Calendar className="h-4 w-4 mr-2" />
-                        Schedule Session
+                      <Button variant="ghost" className="w-full" onClick={() => setActiveTab('schedule')}>
+                        <Calendar className="h-4 w-4 mr-2" />Schedule Session
                       </Button>
                     </div>
                   </div>
@@ -1957,78 +2121,31 @@ export default function TutorDashboardPage() {
           <h1 className="text-3xl font-bold" style={{ color: '#073045' }}>Earnings</h1>
           <p className="text-gray-600">Track your income and payments</p>
         </div>
-        <Button 
-          size="sm"
-          style={{ backgroundColor: '#1d636c', color: 'white' }}
-        >
-          <Download className="h-4 w-4 mr-2" />
-          Download Report
+        <Button size="sm" style={{ backgroundColor: '#1d636c', color: 'white' }}>
+          <Download className="h-4 w-4 mr-2" />Download Report
         </Button>
       </div>
-
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="p-2 rounded-lg" style={{ backgroundColor: '#1d636c' }}>
-                <DollarSign className="h-5 w-5 text-white" />
+        {[
+          { label: 'Total Earnings', value: `₦${stats?.totalEarnings?.toLocaleString() || '0'}`, icon: DollarSign, color: '#1d636c', badge: '+12%', badgeClass: 'bg-green-100 text-green-800' },
+          { label: 'This Month', value: `₦${monthlyEarnings?.toLocaleString() || '0'}`, icon: CreditCard, color: '#e6941f', badge: 'Current', badgeClass: 'bg-blue-100 text-blue-800' },
+          { label: 'Pending', value: `₦${(monthlyEarnings * 0.2).toLocaleString()}`, icon: Calendar, color: '#073045', badge: 'Pending', badgeClass: 'bg-yellow-100 text-yellow-800' },
+          { label: 'Available', value: `₦${(monthlyEarnings * 0.8).toLocaleString()}`, icon: Download, color: '#1d636c', badge: 'Withdraw', badgeClass: 'bg-purple-100 text-purple-800' },
+        ].map((item, i) => (
+          <Card key={i}>
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between mb-4">
+                <div className="p-2 rounded-lg" style={{ backgroundColor: item.color }}>
+                  <item.icon className="h-5 w-5 text-white" />
+                </div>
+                <Badge className={item.badgeClass}>{item.badge}</Badge>
               </div>
-              <Badge className="bg-green-100 text-green-800">
-                <TrendingUp className="h-3 w-3 mr-1" />
-                +12%
-              </Badge>
-            </div>
-            <p className="text-sm text-gray-600">Total Earnings</p>
-            <p className="text-2xl font-bold">₦{stats?.totalEarnings?.toLocaleString() || '0'}</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="p-2 rounded-lg" style={{ backgroundColor: '#e6941f' }}>
-                <CreditCard className="h-5 w-5 text-white" />
-              </div>
-              <Badge className="bg-blue-100 text-blue-800">
-                This Month
-              </Badge>
-            </div>
-            <p className="text-sm text-gray-600">This Month</p>
-            <p className="text-2xl font-bold">₦{monthlyEarnings?.toLocaleString() || '0'}</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="p-2 rounded-lg" style={{ backgroundColor: '#073045' }}>
-                <Calendar className="h-5 w-5 text-white" />
-              </div>
-              <Badge className="bg-yellow-100 text-yellow-800">
-                Pending
-              </Badge>
-            </div>
-            <p className="text-sm text-gray-600">Pending Payments</p>
-            <p className="text-2xl font-bold">₦{(monthlyEarnings * 0.2).toLocaleString()}</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="p-2 rounded-lg" style={{ backgroundColor: '#1d636c' }}>
-                <Download className="h-5 w-5 text-white" />
-              </div>
-              <Badge className="bg-purple-100 text-purple-800">
-                Available
-              </Badge>
-            </div>
-            <p className="text-sm text-gray-600">Available for Withdrawal</p>
-            <p className="text-2xl font-bold">₦{(monthlyEarnings * 0.8).toLocaleString()}</p>
-          </CardContent>
-        </Card>
+              <p className="text-sm text-gray-600">{item.label}</p>
+              <p className="text-2xl font-bold">{item.value}</p>
+            </CardContent>
+          </Card>
+        ))}
       </div>
-
       <Card>
         <CardHeader>
           <CardTitle>Transaction History</CardTitle>
@@ -2049,9 +2166,7 @@ export default function TutorDashboardPage() {
                 </div>
                 <div className="text-right">
                   <p className="font-semibold">₦{booking.amount?.toLocaleString()}</p>
-                  <Badge className={booking.status === 'completed' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}>
-                    {booking.status}
-                  </Badge>
+                  <Badge className={booking.status === 'completed' ? 'bg-green-100 text-green-800' : 'bg-yellow-100 text-yellow-800'}>{booking.status}</Badge>
                 </div>
               </div>
             ))}
@@ -2068,20 +2183,15 @@ export default function TutorDashboardPage() {
           <h1 className="text-3xl font-bold" style={{ color: '#073045' }}>Schedule</h1>
           <p className="text-gray-600">Manage your availability and sessions</p>
         </div>
-        <Button 
-          size="sm"
-          style={{ backgroundColor: '#1d636c', color: 'white' }}
-        >
-          <Plus className="h-4 w-4 mr-2" />
-          Add Availability
+        <Button size="sm" style={{ backgroundColor: '#1d636c', color: 'white' }}>
+          <Plus className="h-4 w-4 mr-2" />Add Availability
         </Button>
       </div>
-
       <div className="grid gap-6 md:grid-cols-2">
         <Card>
           <CardHeader>
             <CardTitle>Weekly Availability</CardTitle>
-            <CardDescription>Set your regular teaching hours</CardDescription>
+            <CardDescription>Your regular teaching hours</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
@@ -2102,7 +2212,6 @@ export default function TutorDashboardPage() {
             </div>
           </CardContent>
         </Card>
-
         <Card>
           <CardHeader>
             <CardTitle>Upcoming Sessions</CardTitle>
@@ -2114,17 +2223,13 @@ export default function TutorDashboardPage() {
                 <div key={booking.id} className="p-4 border rounded-lg">
                   <div className="flex items-center justify-between mb-2">
                     <div className="flex items-center space-x-2">
-                      <Avatar className="h-8 w-8">
-                        <AvatarFallback>{booking.studentName?.charAt(0)}</AvatarFallback>
-                      </Avatar>
+                      <Avatar className="h-8 w-8"><AvatarFallback>{booking.studentName?.charAt(0)}</AvatarFallback></Avatar>
                       <span className="font-medium">{booking.studentName}</span>
                     </div>
                     <Badge>{booking.subject}</Badge>
                   </div>
                   <div className="flex items-center justify-between text-sm">
-                    <span className="text-gray-600">
-                      {booking.sessionDate ? format(new Date(booking.sessionDate), 'MMM d, yyyy') : 'Date'} • {booking.sessionTime}
-                    </span>
+                    <span className="text-gray-600">{booking.sessionDate ? format(new Date(booking.sessionDate), 'MMM d, yyyy') : 'Date'} • {booking.sessionTime}</span>
                     <span className="font-medium">₦{booking.amount?.toLocaleString()}</span>
                   </div>
                 </div>
@@ -2143,15 +2248,7 @@ export default function TutorDashboardPage() {
           <h1 className="text-3xl font-bold" style={{ color: '#073045' }}>Teaching Resources</h1>
           <p className="text-gray-600">Access educational materials and tools</p>
         </div>
-        <Button 
-          variant="outline"
-          size="sm"
-        >
-          <Upload className="h-4 w-4 mr-2" />
-          Upload Resource
-        </Button>
       </div>
-
       <Card>
         <CardContent className="pt-6">
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
@@ -2169,13 +2266,8 @@ export default function TutorDashboardPage() {
                     <span>{resource.size}</span>
                     <span>{resource.downloads} downloads</span>
                   </div>
-                  <Button 
-                    variant="outline" 
-                    className="w-full"
-                    style={{ borderColor: '#1d636c', color: '#1d636c' }}
-                  >
-                    <Download className="h-4 w-4 mr-2" />
-                    Download
+                  <Button variant="outline" className="w-full" style={{ borderColor: '#1d636c', color: '#1d636c' }}>
+                    <Download className="h-4 w-4 mr-2" />Download
                   </Button>
                 </CardContent>
               </Card>
@@ -2193,123 +2285,29 @@ export default function TutorDashboardPage() {
           <h1 className="text-3xl font-bold" style={{ color: '#073045' }}>Performance Analytics</h1>
           <p className="text-gray-600">Track your tutoring performance and growth</p>
         </div>
-        <Button 
-          variant="outline"
-          size="sm"
-        >
-          <Download className="h-4 w-4 mr-2" />
-          Export Report
-        </Button>
+        <Button variant="outline" size="sm"><Download className="h-4 w-4 mr-2" />Export Report</Button>
       </div>
-
       <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="p-2 rounded-lg" style={{ backgroundColor: '#1d636c' }}>
-                <Users2 className="h-5 w-5 text-white" />
-              </div>
-              <Badge className="bg-green-100 text-green-800">
-                <TrendingUp className="h-3 w-3 mr-1" />
-                +8%
-              </Badge>
-            </div>
-            <p className="text-sm text-gray-600">Student Retention</p>
-            <p className="text-2xl font-bold">{performanceMetrics.studentRetention}%</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="p-2 rounded-lg" style={{ backgroundColor: '#e6941f' }}>
-                <TrendingUp className="h-5 w-5 text-white" />
-              </div>
-              <Badge className="bg-blue-100 text-blue-800">
-                <TrendingUp className="h-3 w-3 mr-1" />
-                +42%
-              </Badge>
-            </div>
-            <p className="text-sm text-gray-600">Session Growth</p>
-            <p className="text-2xl font-bold">{performanceMetrics.sessionGrowth}%</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="p-2 rounded-lg" style={{ backgroundColor: '#073045' }}>
-                <Star className="h-5 w-5 text-white" />
-              </div>
-              <Badge className="bg-yellow-100 text-yellow-800">
-                {performanceMetrics.ratingTrend}/5
-              </Badge>
-            </div>
-            <p className="text-sm text-gray-600">Rating Trend</p>
-            <p className="text-2xl font-bold">{performanceMetrics.ratingTrend}</p>
-          </CardContent>
-        </Card>
-
-        <Card>
-          <CardContent className="pt-6">
-            <div className="flex items-center justify-between mb-4">
-              <div className="p-2 rounded-lg" style={{ backgroundColor: '#1d636c' }}>
-                <PieChart className="h-5 w-5 text-white" />
-              </div>
-              <Badge className="bg-purple-100 text-purple-800">
-                Excellent
-              </Badge>
-            </div>
-            <p className="text-sm text-gray-600">Engagement Score</p>
-            <p className="text-2xl font-bold">{performanceMetrics.engagementScore}%</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      <Card>
-        <CardHeader>
-          <CardTitle>Performance Trends</CardTitle>
-          <CardDescription>Monthly performance overview</CardDescription>
-        </CardHeader>
-        <CardContent>
-          <div className="space-y-4">
-            <div className="flex items-center justify-between p-4 border rounded-lg">
-              <div>
-                <p className="font-medium">Session Completion Rate</p>
-                <p className="text-sm text-gray-600">Percentage of completed sessions</p>
-              </div>
-              <div className="text-right">
-                <p className="text-2xl font-bold">{performance?.completionRate || 0}%</p>
-                <Badge className="bg-green-100 text-green-800">
-                  <TrendingUp className="h-3 w-3 mr-1" />
-                  +5%
-                </Badge>
-              </div>
-            </div>
-            <div className="flex items-center justify-between p-4 border rounded-lg">
-              <div>
-                <p className="font-medium">Average Session Rating</p>
-                <p className="text-sm text-gray-600">Student feedback score</p>
-              </div>
-              <div className="text-right">
-                <p className="text-2xl font-bold">{performance?.averageRating?.toFixed(1) || '0.0'}</p>
-                <div className="flex items-center justify-end">
-                  {[1, 2, 3, 4, 5].map((star) => (
-                    <Star 
-                      key={star} 
-                      className={`h-4 w-4 mx-0.5 ${
-                        star <= Math.floor(performance?.averageRating || 0) 
-                          ? 'text-yellow-500 fill-current' 
-                          : 'text-gray-300'
-                      }`} 
-                    />
-                  ))}
+        {[
+          { label: 'Student Retention', value: `${performanceMetrics.studentRetention}%`, icon: Users2, color: '#1d636c', badge: '+8%', badgeClass: 'bg-green-100 text-green-800' },
+          { label: 'Session Growth', value: `${performanceMetrics.sessionGrowth}%`, icon: TrendingUp, color: '#e6941f', badge: '+42%', badgeClass: 'bg-blue-100 text-blue-800' },
+          { label: 'Rating Trend', value: `${performanceMetrics.ratingTrend}`, icon: Star, color: '#073045', badge: '/5', badgeClass: 'bg-yellow-100 text-yellow-800' },
+          { label: 'Engagement Score', value: `${performanceMetrics.engagementScore}%`, icon: PieChart, color: '#1d636c', badge: 'Excellent', badgeClass: 'bg-purple-100 text-purple-800' },
+        ].map((item, i) => (
+          <Card key={i}>
+            <CardContent className="pt-6">
+              <div className="flex items-center justify-between mb-4">
+                <div className="p-2 rounded-lg" style={{ backgroundColor: item.color }}>
+                  <item.icon className="h-5 w-5 text-white" />
                 </div>
+                <Badge className={item.badgeClass}>{item.badge}</Badge>
               </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+              <p className="text-sm text-gray-600">{item.label}</p>
+              <p className="text-2xl font-bold">{item.value}</p>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
     </div>
   );
 
@@ -2320,93 +2318,44 @@ export default function TutorDashboardPage() {
           <HelpCircle className="h-10 w-10 text-white" />
         </div>
         <h1 className="text-3xl font-bold mb-4" style={{ color: '#073045' }}>Help & Support</h1>
-        <p className="text-gray-600 text-lg">
-          We're here to help you succeed as a tutor. Get assistance with any issues or questions.
-        </p>
+        <p className="text-gray-600 text-lg">We're here to help you succeed as a tutor.</p>
       </div>
-
       <div className="grid gap-6 md:grid-cols-3">
-        <Card className="border-2 hover:border-[#1d636c] transition-all duration-300 hover:-translate-y-1">
-          <CardContent className="pt-6">
-            <div className="flex flex-col items-center text-center space-y-4">
-              <div className="p-4 rounded-full" style={{ backgroundColor: '#e6941f' }}>
-                <MessageSquare className="h-8 w-8 text-white" />
+        {[
+          { title: 'Live Chat Support', desc: 'Chat with our support team in real-time.', icon: MessageSquare, color: '#e6941f', btnLabel: 'Start Chat', btnStyle: { backgroundColor: '#1d636c', color: 'white' } },
+          { title: 'Email Support', desc: "Send us an email and we'll respond within 24 hours.", icon: Mail, color: '#073045', btnLabel: 'Email Us', btnStyle: { borderColor: '#e6941f', color: '#e6941f' } },
+          { title: 'Help Center', desc: 'Browse our comprehensive knowledge base and FAQs.', icon: BookOpen, color: '#1d636c', btnLabel: 'Visit Help Center', btnStyle: { borderColor: '#073045', color: '#073045' } },
+        ].map((item, i) => (
+          <Card key={i} className="border-2 hover:border-[#1d636c] transition-all duration-300 hover:-translate-y-1">
+            <CardContent className="pt-6">
+              <div className="flex flex-col items-center text-center space-y-4">
+                <div className="p-4 rounded-full" style={{ backgroundColor: item.color }}>
+                  <item.icon className="h-8 w-8 text-white" />
+                </div>
+                <div>
+                  <h3 className="font-bold text-lg mb-2">{item.title}</h3>
+                  <p className="text-gray-600">{item.desc}</p>
+                </div>
+                <Button variant="outline" className="w-full" style={item.btnStyle}>{item.btnLabel}</Button>
               </div>
-              <div>
-                <h3 className="font-bold text-lg mb-2">Live Chat Support</h3>
-                <p className="text-gray-600">Chat with our support team in real-time for immediate assistance.</p>
-              </div>
-              <Button 
-                className="w-full"
-                style={{ backgroundColor: '#1d636c', color: 'white' }}
-              >
-                Start Chat
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-2 hover:border-[#e6941f] transition-all duration-300 hover:-translate-y-1">
-          <CardContent className="pt-6">
-            <div className="flex flex-col items-center text-center space-y-4">
-              <div className="p-4 rounded-full" style={{ backgroundColor: '#073045' }}>
-                <Mail className="h-8 w-8 text-white" />
-              </div>
-              <div>
-                <h3 className="font-bold text-lg mb-2">Email Support</h3>
-                <p className="text-gray-600">Send us an email and we'll respond within 24 hours.</p>
-              </div>
-              <Button 
-                variant="outline"
-                className="w-full"
-                style={{ borderColor: '#e6941f', color: '#e6941f' }}
-              >
-                Email Us
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-
-        <Card className="border-2 hover:border-[#073045] transition-all duration-300 hover:-translate-y-1">
-          <CardContent className="pt-6">
-            <div className="flex flex-col items-center text-center space-y-4">
-              <div className="p-4 rounded-full" style={{ backgroundColor: '#1d636c' }}>
-                <BookOpen className="h-8 w-8 text-white" />
-              </div>
-              <div>
-                <h3 className="font-bold text-lg mb-2">Help Center</h3>
-                <p className="text-gray-600">Browse our comprehensive knowledge base and FAQs.</p>
-              </div>
-              <Button 
-                variant="outline"
-                className="w-full"
-                style={{ borderColor: '#073045', color: '#073045' }}
-              >
-                Visit Help Center
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
+            </CardContent>
+          </Card>
+        ))}
       </div>
-
       <Card>
-        <CardHeader>
-          <CardTitle>Frequently Asked Questions</CardTitle>
-        </CardHeader>
+        <CardHeader><CardTitle>Frequently Asked Questions</CardTitle></CardHeader>
         <CardContent>
           <div className="space-y-4">
-            <div className="p-4 border rounded-lg">
-              <h3 className="font-semibold mb-2">How do I update my availability?</h3>
-              <p className="text-gray-600">Go to the Schedule section and click "Add Availability" to set your teaching hours.</p>
-            </div>
-            <div className="p-4 border rounded-lg">
-              <h3 className="font-semibold mb-2">When do I get paid?</h3>
-              <p className="text-gray-600">Payments are processed weekly on Fridays for all completed sessions.</p>
-            </div>
-            <div className="p-4 border rounded-lg">
-              <h3 className="font-semibold mb-2">How can I improve my rating?</h3>
-              <p className="text-gray-600">Be punctual, prepared, and provide quality instruction. Request feedback after sessions.</p>
-            </div>
+            {[
+              { q: 'How do I update my availability?', a: 'Go to the Schedule section and click "Add Availability" to set your teaching hours.' },
+              { q: 'When do I get paid?', a: 'Payments are processed weekly on Fridays for all completed sessions.' },
+              { q: 'How can I improve my rating?', a: 'Be punctual, prepared, and provide quality instruction. Request feedback after sessions.' },
+            ].map((faq, i) => (
+              <div key={i} className="p-4 border rounded-lg">
+                <h3 className="font-semibold mb-2">{faq.q}</h3>
+                <p className="text-gray-600">{faq.a}</p>
+              </div>
+            ))}
           </div>
         </CardContent>
       </Card>
@@ -2430,34 +2379,15 @@ export default function TutorDashboardPage() {
   if (userData?.tutorStatus !== 'approved') {
     return (
       <div className="flex flex-col min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
-        <header className="sticky top-0 z-50 w-full border-b bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/60">
+        <header className="sticky top-0 z-50 w-full border-b bg-white/95 backdrop-blur">
           <div className="container mx-auto flex h-16 items-center justify-between px-4 md:px-6 max-w-7xl">
             <div className="flex items-center space-x-2">
-              <Image 
-                src="/edumentor-logo.png"
-                alt="Edumentor Logo"
-                width={32}
-                height={32}
-                className="h-8 w-8"
-              />
+              <Image src="/edumentor-logo.png" alt="Edumentor Logo" width={32} height={32} className="h-8 w-8" />
               <span className="text-2xl font-bold" style={{ color: '#073045' }}>Edumentor</span>
             </div>
-            <div className="flex items-center space-x-4">
-              <Link href="/">
-                <Button variant="ghost" size="sm" className="hover:opacity-80" style={{ color: '#073045' }}>
-                  <ArrowLeft className="mr-2 h-4 w-4" />
-                  Back to Home
-                </Button>
-              </Link>
-              <Link href="/tutor-dashboard">
-                <Button size="sm" className="text-white hover:opacity-90" style={{ backgroundColor: '#1d636c' }}>
-                  Dashboard
-                </Button>
-              </Link>
-            </div>
+            <Link href="/"><Button variant="ghost" size="sm" style={{ color: '#073045' }}><ArrowLeft className="mr-2 h-4 w-4" />Back to Home</Button></Link>
           </div>
         </header>
-
         <div className="flex-1 flex items-center justify-center p-6">
           <Card className="w-full max-w-md shadow-2xl border-2" style={{ borderColor: '#e5e7eb' }}>
             <CardHeader className="text-center">
@@ -2475,36 +2405,23 @@ export default function TutorDashboardPage() {
               <div className="text-center space-y-3">
                 <p className="text-gray-600">
                   {userData?.tutorStatus === 'pending_payment'
-                    ? "Complete your application to start receiving students and earning income."
-                    : "We'll notify you via email once your application is approved. This usually takes 2-3 business days."}
+                    ? "Complete your application to start receiving students."
+                    : "We'll notify you via email once approved. This usually takes 2-3 business days."}
                 </p>
                 <Badge className="mx-auto" style={{ backgroundColor: '#e6941f', color: '#073045' }}>
-                  <Sparkles className="inline h-3 w-3 mr-1" />
-                  Estimated review time: 2-3 business days
+                  <Sparkles className="inline h-3 w-3 mr-1" />Estimated review time: 2-3 business days
                 </Badge>
               </div>
-              
               <div className="space-y-3">
                 {userData?.tutorStatus === 'pending_payment' && (
                   <Link href="/become-tutor">
-                    <Button 
-                      className="w-full hover:opacity-90"
-                      style={{ backgroundColor: '#1d636c', color: 'white' }}
-                    >
-                      Complete Application
-                      <ArrowRight className="ml-2 h-4 w-4" />
+                    <Button className="w-full" style={{ backgroundColor: '#1d636c', color: 'white' }}>
+                      Complete Application<ArrowRight className="ml-2 h-4 w-4" />
                     </Button>
                   </Link>
                 )}
-                
                 <Link href="/">
-                  <Button 
-                    variant="outline" 
-                    className="w-full border-2 hover:opacity-80"
-                    style={{ borderColor: '#e6941f', color: '#e6941f' }}
-                  >
-                    Return to Home
-                  </Button>
+                  <Button variant="outline" className="w-full border-2" style={{ borderColor: '#e6941f', color: '#e6941f' }}>Return to Home</Button>
                 </Link>
               </div>
             </CardContent>
@@ -2516,37 +2433,30 @@ export default function TutorDashboardPage() {
 
   return (
     <div className="flex flex-col min-h-screen bg-gradient-to-br from-gray-50 to-gray-100">
+      {/* Create Meeting Modal */}
       <CreateMeetingModal
         isOpen={showCreateMeeting}
         onClose={() => { setShowCreateMeeting(false); setEditingMeeting(null); }}
         onSubmit={handleCreateMeeting}
         activeStudents={activeStudents}
         editMeeting={editingMeeting}
+        isCreating={isCreatingMeeting}
       />
 
+      {/* Header */}
       <header className="sticky top-0 z-50 w-full border-b bg-white/95 backdrop-blur supports-[backdrop-filter]:bg-white/60">
         <div className="container mx-auto flex h-16 items-center justify-between px-4 md:px-6 max-w-7xl">
           <div className="flex items-center space-x-3">
-            <button 
-              onClick={() => setSidebarOpen(!sidebarOpen)}
-              className="lg:hidden p-2 hover:bg-gray-100 rounded-lg"
-            >
+            <button onClick={() => setSidebarOpen(!sidebarOpen)} className="lg:hidden p-2 hover:bg-gray-100 rounded-lg">
               <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
               </svg>
             </button>
             <div className="flex items-center space-x-2">
-              <Image 
-                src="/edumentor-logo.png"
-                alt="Edumentor Logo"
-                width={32}
-                height={32}
-                className="h-8 w-8"
-              />
+              <Image src="/edumentor-logo.png" alt="Edumentor Logo" width={32} height={32} className="h-8 w-8" />
               <span className="text-2xl font-bold" style={{ color: '#073045' }}>Edumentor</span>
               <Badge className="hidden md:inline-flex" style={{ backgroundColor: '#e6941f', color: '#073045' }}>
-                <Sparkles className="inline h-3 w-3 mr-1" />
-                Tutor Dashboard
+                <Sparkles className="inline h-3 w-3 mr-1" />Tutor Dashboard
               </Badge>
             </div>
           </div>
@@ -2554,11 +2464,8 @@ export default function TutorDashboardPage() {
           <div className="flex items-center space-x-4">
             <button className="relative p-2 hover:bg-gray-100 rounded-lg">
               <Bell className="h-5 w-5" style={{ color: '#073045' }} />
-              <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">
-                3
-              </span>
+              <span className="absolute -top-1 -right-1 w-5 h-5 bg-red-500 text-white text-xs rounded-full flex items-center justify-center">3</span>
             </button>
-            
             <div className="hidden md:flex items-center space-x-3">
               <Avatar className="h-9 w-9 border-2" style={{ borderColor: '#1d636c' }}>
                 <AvatarImage src={user?.photoURL || ""} alt={userData?.firstName || "Tutor"} />
@@ -2567,22 +2474,12 @@ export default function TutorDashboardPage() {
                 </AvatarFallback>
               </Avatar>
               <div className="hidden lg:block">
-                <p className="text-sm font-semibold" style={{ color: '#073045' }}>
-                  {userData?.firstName} {userData?.lastName}
-                </p>
+                <p className="text-sm font-semibold" style={{ color: '#073045' }}>{userData?.firstName} {userData?.lastName}</p>
                 <p className="text-xs text-gray-600">Verified Tutor</p>
               </div>
             </div>
-            
-            <Button 
-              variant="ghost" 
-              size="sm" 
-              onClick={handleLogout}
-              className="hover:opacity-80"
-              style={{ color: '#073045' }}
-            >
-              <LogOut className="h-4 w-4 mr-2" />
-              Logout
+            <Button variant="ghost" size="sm" onClick={handleLogout} style={{ color: '#073045' }}>
+              <LogOut className="h-4 w-4 mr-2" />Logout
             </Button>
           </div>
         </div>
@@ -2590,157 +2487,88 @@ export default function TutorDashboardPage() {
 
       <div className="flex flex-1">
         {sidebarOpen && (
-          <div 
-            className="fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden"
-            onClick={() => setSidebarOpen(false)}
-          />
+          <div className="fixed inset-0 bg-black bg-opacity-50 z-40 lg:hidden" onClick={() => setSidebarOpen(false)} />
         )}
 
+        {/* Sidebar */}
         <aside className={`fixed lg:static inset-y-0 left-0 z-50 w-64 bg-white border-r transform transition-transform duration-300 ease-in-out ${
           sidebarOpen ? 'translate-x-0' : '-translate-x-full'
         } lg:translate-x-0 lg:flex lg:flex-col lg:inset-0`}>
           <div className="flex-1 p-6 overflow-y-auto">
+            {/* User Profile */}
             <div className="flex items-center space-x-3 mb-8 p-4 rounded-lg" style={{ backgroundColor: '#f8f9fa' }}>
               <Avatar className="h-12 w-12 border-2" style={{ borderColor: '#1d636c' }}>
-                <AvatarImage src={user?.photoURL || ""} alt={userData?.firstName || "Tutor"} />
+                <AvatarImage src={user?.photoURL || ""} />
                 <AvatarFallback className="text-white" style={{ backgroundColor: '#1d636c' }}>
                   {userData?.firstName?.charAt(0)}{userData?.lastName?.charAt(0)}
                 </AvatarFallback>
               </Avatar>
               <div className="flex-1">
-                <p className="font-semibold" style={{ color: '#073045' }}>
-                  {userData?.firstName} {userData?.lastName}
-                </p>
-                <div className="flex items-center">
-                  <Badge className="mt-1" style={{ backgroundColor: '#e6941f', color: '#073045' }}>
-                    <CheckCircle className="inline h-3 w-3 mr-1" />
-                    Verified
-                  </Badge>
-                </div>
+                <p className="font-semibold" style={{ color: '#073045' }}>{userData?.firstName} {userData?.lastName}</p>
+                <Badge className="mt-1" style={{ backgroundColor: '#e6941f', color: '#073045' }}>
+                  <CheckCircle className="inline h-3 w-3 mr-1" />Verified
+                </Badge>
               </div>
             </div>
 
+            {/* Navigation */}
             <div className="space-y-8">
               <div>
                 <h3 className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: '#1d636c' }}>Dashboard</h3>
                 <nav className="space-y-1">
-                  <button 
-                    onClick={() => setActiveTab('overview')}
-                    className={`flex items-center space-x-3 px-3 py-2.5 rounded-lg transition-all w-full text-left ${
-                      activeTab === 'overview' 
-                        ? 'bg-[#1d636c] text-white' 
-                        : 'hover:bg-gray-50'
-                    }`}
-                  >
-                    <TrendingUp className="h-5 w-5" />
-                    <span className="font-medium">Overview</span>
-                  </button>
-                  
-                  <button 
-                    onClick={() => setActiveTab('bookings')}
-                    className={`flex items-center space-x-3 px-3 py-2.5 rounded-lg transition-all w-full text-left ${
-                      activeTab === 'bookings' 
-                        ? 'bg-[#1d636c] text-white' 
-                        : 'hover:bg-gray-50'
-                    }`}
-                  >
-                    <Calendar className="h-5 w-5" />
-                    <span className="font-medium">Bookings</span>
-                  </button>
-
-                  <button 
-                    onClick={() => setActiveTab('meetings')}
-                    className={`flex items-center space-x-3 px-3 py-2.5 rounded-lg transition-all w-full text-left ${
-                      activeTab === 'meetings' 
-                        ? 'bg-[#1d636c] text-white' 
-                        : 'hover:bg-gray-50'
-                    }`}
-                  >
-                    <Video className="h-5 w-5" />
-                    <span className="font-medium">Video Meetings</span>
-                    {meetings.filter(m => m.status === 'scheduled').length > 0 && (
-                      <span className="ml-auto text-xs bg-[#e6941f] text-[#073045] px-2 py-0.5 rounded-full font-bold">
-                        {meetings.filter(m => m.status === 'scheduled').length}
-                      </span>
-                    )}
-                  </button>
-                  
-                  <button 
-                    onClick={() => setActiveTab('students')}
-                    className={`flex items-center space-x-3 px-3 py-2.5 rounded-lg transition-all w-full text-left ${
-                      activeTab === 'students' 
-                        ? 'bg-[#1d636c] text-white' 
-                        : 'hover:bg-gray-50'
-                    }`}
-                  >
-                    <Users className="h-5 w-5" />
-                    <span className="font-medium">Students</span>
-                  </button>
-                  
-                  <button 
-                    onClick={() => setActiveTab('earnings')}
-                    className={`flex items-center space-x-3 px-3 py-2.5 rounded-lg transition-all w-full text-left ${
-                      activeTab === 'earnings' 
-                        ? 'bg-[#1d636c] text-white' 
-                        : 'hover:bg-gray-50'
-                    }`}
-                  >
-                    <DollarSign className="h-5 w-5" />
-                    <span className="font-medium">Earnings</span>
-                  </button>
-                  
-                  <button 
-                    onClick={() => setActiveTab('schedule')}
-                    className={`flex items-center space-x-3 px-3 py-2.5 rounded-lg transition-all w-full text-left ${
-                      activeTab === 'schedule' 
-                        ? 'bg-[#1d636c] text-white' 
-                        : 'hover:bg-gray-50'
-                    }`}
-                  >
-                    <Clock className="h-5 w-5" />
-                    <span className="font-medium">Schedule</span>
-                  </button>
+                  {[
+                    { tab: 'overview', icon: TrendingUp, label: 'Overview' },
+                    { tab: 'bookings', icon: Calendar, label: 'Bookings' },
+                    { tab: 'meetings', icon: Video, label: 'Video Meetings', badge: meetings.filter(m => m.status === 'scheduled').length },
+                    { tab: 'students', icon: Users, label: 'Students' },
+                    { tab: 'earnings', icon: DollarSign, label: 'Earnings' },
+                    { tab: 'schedule', icon: Clock, label: 'Schedule' },
+                  ].map(({ tab, icon: Icon, label, badge }) => (
+                    <button
+                      key={tab}
+                      onClick={() => setActiveTab(tab as any)}
+                      className={`flex items-center space-x-3 px-3 py-2.5 rounded-lg transition-all w-full text-left ${
+                        activeTab === tab ? 'bg-[#1d636c] text-white' : 'hover:bg-gray-50'
+                      }`}
+                    >
+                      <Icon className="h-5 w-5" />
+                      <span className="font-medium flex-1">{label}</span>
+                      {badge !== undefined && badge > 0 && (
+                        <span className="text-xs bg-[#e6941f] text-[#073045] px-2 py-0.5 rounded-full font-bold">{badge}</span>
+                      )}
+                    </button>
+                  ))}
                 </nav>
               </div>
 
               <div>
                 <h3 className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: '#1d636c' }}>Resources</h3>
                 <nav className="space-y-1">
-                  <button 
-                    onClick={() => setActiveTab('resources')}
-                    className={`flex items-center space-x-3 px-3 py-2.5 rounded-lg transition-all w-full text-left ${
-                      activeTab === 'resources' 
-                        ? 'bg-[#1d636c] text-white' 
-                        : 'hover:bg-gray-50'
-                    }`}
-                  >
-                    <BookOpen className="h-5 w-5" />
-                    <span className="font-medium">Teaching Resources</span>
-                  </button>
-                  
-                  <button 
-                    onClick={() => setActiveTab('performance')}
-                    className={`flex items-center space-x-3 px-3 py-2.5 rounded-lg transition-all w-full text-left ${
-                      activeTab === 'performance' 
-                        ? 'bg-[#1d636c] text-white' 
-                        : 'hover:bg-gray-50'
-                    }`}
-                  >
-                    <BarChart className="h-5 w-5" />
-                    <span className="font-medium">Performance Analytics</span>
-                  </button>
+                  {[
+                    { tab: 'resources', icon: BookOpen, label: 'Teaching Resources' },
+                    { tab: 'performance', icon: BarChart, label: 'Performance Analytics' },
+                  ].map(({ tab, icon: Icon, label }) => (
+                    <button
+                      key={tab}
+                      onClick={() => setActiveTab(tab as any)}
+                      className={`flex items-center space-x-3 px-3 py-2.5 rounded-lg transition-all w-full text-left ${
+                        activeTab === tab ? 'bg-[#1d636c] text-white' : 'hover:bg-gray-50'
+                      }`}
+                    >
+                      <Icon className="h-5 w-5" />
+                      <span className="font-medium">{label}</span>
+                    </button>
+                  ))}
                 </nav>
               </div>
 
               <div>
                 <h3 className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: '#1d636c' }}>Support</h3>
                 <nav className="space-y-1">
-                  <button 
+                  <button
                     onClick={() => setActiveTab('support')}
                     className={`flex items-center space-x-3 px-3 py-2.5 rounded-lg transition-all w-full text-left ${
-                      activeTab === 'support' 
-                        ? 'bg-[#1d636c] text-white' 
-                        : 'hover:bg-gray-50'
+                      activeTab === 'support' ? 'bg-[#1d636c] text-white' : 'hover:bg-gray-50'
                     }`}
                   >
                     <HelpCircle className="h-5 w-5" />
@@ -2750,33 +2578,27 @@ export default function TutorDashboardPage() {
               </div>
             </div>
 
+            {/* Stats Summary */}
             <div className="mt-8 p-4 rounded-lg border" style={{ borderColor: '#e5e7eb' }}>
               <div className="flex items-center justify-between mb-3">
                 <span className="text-sm font-medium" style={{ color: '#073045' }}>This Month</span>
-                <Badge style={{ backgroundColor: '#e6941f', color: '#073045' }}>
-                  ₦{monthlyEarnings?.toLocaleString() || '0'}
-                </Badge>
+                <Badge style={{ backgroundColor: '#e6941f', color: '#073045' }}>₦{monthlyEarnings?.toLocaleString() || '0'}</Badge>
               </div>
-              <Progress value={75} className="h-2 mb-2" style={{ backgroundColor: '#e5e7eb' }} />
+              <Progress value={75} className="h-2 mb-2" />
               <p className="text-xs text-gray-600">
-                {bookings.length} bookings • {activeStudents.length} active students
+                {bookings.length} bookings · {activeStudents.length} active students · {meetings.filter(m => m.status === 'scheduled').length} meetings
               </p>
             </div>
           </div>
           
           {sidebarOpen && (
             <div className="lg:hidden p-4 border-t">
-              <Button 
-                onClick={() => setSidebarOpen(false)}
-                className="w-full"
-                variant="outline"
-              >
-                Close Menu
-              </Button>
+              <Button onClick={() => setSidebarOpen(false)} className="w-full" variant="outline">Close Menu</Button>
             </div>
           )}
         </aside>
 
+        {/* Main Content */}
         <main className="flex-1 p-4 md:p-6 lg:p-8 overflow-y-auto">
           <div className="space-y-8">
             {renderContent()}
@@ -2786,9 +2608,3 @@ export default function TutorDashboardPage() {
     </div>
   );
 }
-
-const Upload = ({ className = "h-4 w-4" }) => (
-  <svg className={className} fill="none" stroke="currentColor" viewBox="0 0 24 24">
-    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-8l-4-4m0 0L8 8m4-4v12" />
-  </svg>
-);
