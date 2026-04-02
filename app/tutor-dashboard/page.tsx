@@ -96,17 +96,25 @@ function Badge({ variant, className, children, style }: any) {
 // PLATFORM CREDENTIALS & CONFIG
 // ==========================================
 
-// Zoom OAuth Credentials (Server-to-Server OAuth)
+// ==========================================
+// CREDENTIALS — loaded from environment variables only.
+// Never hardcode secrets in source code.
+//
+// Add to .env.local (do NOT commit this file):
+//   ZOOM_ACCOUNT_ID=your_account_id
+//   ZOOM_CLIENT_ID=your_client_id
+//   ZOOM_CLIENT_SECRET=your_client_secret       ← server-side only, never NEXT_PUBLIC_
+//   NEXT_PUBLIC_GOOGLE_CALENDAR_API_KEY=your_api_key
+// ==========================================
+
 const ZOOM_CONFIG = {
-  accountId: 'hASBMDVaQfCg89HgoOA0mw',
-  clientId: '5XnHOmmbSZSX0cEyghXqrA',
-  clientSecret: 'kCuKtNkQNSH4iZzeIUYdvurA4S5szyXk',
+  accountId: process.env.ZOOM_ACCOUNT_ID ?? '',
+  clientId: process.env.ZOOM_CLIENT_ID ?? '',
+  // clientSecret is intentionally absent here — only used inside /api/zoom/token (server route)
 };
 
-// Google Meet / Google Calendar API Key
-const GOOGLE_CONFIG = {
-  apiKey: 'AIzaSyDIHrhYMLr17OvI2vs6ntf_mV_qrG7LLU4',
-};
+// GOOGLE_CONFIG removed — Google Meet is now created server-side via /api/google-meet
+// No API keys or credentials are needed in the frontend.
 
 // ==========================================
 // VIDEO MEETING INTERFACES & HELPERS
@@ -157,26 +165,27 @@ interface MeetingFormData {
 // ==========================================
 
 /**
- * Gets a Zoom Server-to-Server OAuth access token.
- * NOTE: In production, this token request MUST happen on your backend server
- * to protect your clientSecret. Never expose clientSecret in frontend code.
- * This is shown here for demonstration; move to /api/zoom/token route.
+ * Gets a Zoom access token by calling YOUR OWN backend API route.
+ * The clientSecret never touches the browser — it stays in your server env.
+ *
+ * Create this route in Next.js: /app/api/zoom/token/route.ts
+ *
+ *   import { NextResponse } from 'next/server';
+ *   export async function POST() {
+ *     const credentials = Buffer.from(
+ *       `${process.env.ZOOM_CLIENT_ID}:${process.env.ZOOM_CLIENT_SECRET}`
+ *     ).toString('base64');
+ *     const res = await fetch(
+ *       `https://zoom.us/oauth/token?grant_type=account_credentials&account_id=${process.env.ZOOM_ACCOUNT_ID}`,
+ *       { method: 'POST', headers: { Authorization: `Basic ${credentials}` } }
+ *     );
+ *     const data = await res.json();
+ *     return NextResponse.json({ access_token: data.access_token });
+ *   }
  */
 const getZoomAccessToken = async (): Promise<string | null> => {
   try {
-    // In production: call your own backend endpoint instead
-    // e.g. const res = await fetch('/api/zoom/token');
-    const credentials = btoa(`${ZOOM_CONFIG.clientId}:${ZOOM_CONFIG.clientSecret}`);
-    const res = await fetch(
-      `https://zoom.us/oauth/token?grant_type=account_credentials&account_id=${ZOOM_CONFIG.accountId}`,
-      {
-        method: 'POST',
-        headers: {
-          Authorization: `Basic ${credentials}`,
-          'Content-Type': 'application/x-www-form-urlencoded',
-        },
-      }
-    );
+    const res = await fetch('/api/zoom/token', { method: 'POST' });
     if (!res.ok) return null;
     const data = await res.json();
     return data.access_token || null;
@@ -255,140 +264,110 @@ const createZoomMeeting = async (formData: MeetingFormData): Promise<{ join_url:
 };
 
 // ==========================================
-// GOOGLE MEET / GOOGLE CALENDAR INTEGRATION
+// GOOGLE MEET INTEGRATION
 // ==========================================
 
 /**
- * Creates a Google Calendar event with a Meet link.
- * Uses the Google Calendar REST API with the API key.
- * NOTE: API key only works for public calendar operations.
- * For creating events on a user's calendar, use OAuth2.
- * This function shows the OAuth2 flow via Google Identity Services (GIS).
+ * Creates a Google Meet link by calling your own backend API route.
+ * No OAuth popup, no client_id needed on the frontend.
+ *
+ * Create this route at: /app/api/google-meet/route.ts
+ *
+ * It uses a Google Service Account to create a Calendar event with a Meet link.
+ * Steps to set up (one time):
+ *   1. Go to Google Cloud Console → IAM → Service Accounts → Create Service Account
+ *   2. Give it the role "Calendar API" or share your Google Calendar with its email
+ *   3. Create a JSON key, download it
+ *   4. Add these to .env.local:
+ *        GOOGLE_SERVICE_ACCOUNT_EMAIL=your-sa@your-project.iam.gserviceaccount.com
+ *        GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
+ *        GOOGLE_CALENDAR_ID=primary   (or a specific calendar ID)
+ *
+ * Example /app/api/google-meet/route.ts:
+ *
+ *   import { NextRequest, NextResponse } from 'next/server';
+ *   import { google } from 'googleapis';
+ *
+ *   export async function POST(req: NextRequest) {
+ *     const body = await req.json();
+ *     const auth = new google.auth.JWT(
+ *       process.env.GOOGLE_SERVICE_ACCOUNT_EMAIL,
+ *       undefined,
+ *       process.env.GOOGLE_SERVICE_ACCOUNT_PRIVATE_KEY?.replace(/\\n/g, '\n'),
+ *       ['https://www.googleapis.com/auth/calendar.events']
+ *     );
+ *     const calendar = google.calendar({ version: 'v3', auth });
+ *     const event = await calendar.events.insert({
+ *       calendarId: process.env.GOOGLE_CALENDAR_ID || 'primary',
+ *       conferenceDataVersion: 1,
+ *       requestBody: {
+ *         summary: body.title,
+ *         description: body.description,
+ *         start: { dateTime: body.startTime, timeZone: body.timeZone },
+ *         end:   { dateTime: body.endTime,   timeZone: body.timeZone },
+ *         conferenceData: {
+ *           createRequest: {
+ *             requestId: `edumentor-${Date.now()}`,
+ *             conferenceSolutionKey: { type: 'hangoutsMeet' },
+ *           },
+ *         },
+ *         ...(body.recurrence ? { recurrence: [body.recurrence] } : {}),
+ *       },
+ *     });
+ *     const meetLink = event.data.conferenceData?.entryPoints
+ *       ?.find((ep: any) => ep.entryPointType === 'video')?.uri;
+ *     return NextResponse.json({ meet_link: meetLink, event_id: event.data.id });
+ *   }
  */
 const createGoogleMeetLink = async (formData: MeetingFormData): Promise<{ meet_link: string; event_id: string } | null> => {
   try {
-    // Load Google Identity Services if not already loaded
-    await loadGoogleIdentityServices();
-
-    // Request OAuth2 token via popup
-    const token = await requestGoogleOAuthToken();
-    if (!token) {
-      toast.error('Google sign-in cancelled. Using fallback link.');
-      return null;
-    }
-
     const startDateTime = new Date(`${formData.meetingDate}T${formData.meetingTime}:00`);
-    const endDateTime = new Date(startDateTime.getTime() + formData.duration * 60000);
+    const endDateTime   = new Date(startDateTime.getTime() + formData.duration * 60000);
 
-    const attendees = formData.selectedStudents.map(id => ({ email: `student-${id}@placeholder.com` }));
-
-    const event: any = {
-      summary: formData.title,
-      description: formData.description || formData.notes,
-      start: {
-        dateTime: startDateTime.toISOString(),
-        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-      },
-      end: {
-        dateTime: endDateTime.toISOString(),
-        timeZone: Intl.DateTimeFormat().resolvedOptions().timeZone,
-      },
-      conferenceData: {
-        createRequest: {
-          requestId: `edumentor-${Date.now()}`,
-          conferenceSolutionKey: { type: 'hangoutsMeet' },
-        },
-      },
-      attendees,
+    const rruleMap: Record<string, string> = {
+      daily:    'RRULE:FREQ=DAILY;COUNT=30',
+      weekly:   'RRULE:FREQ=WEEKLY;COUNT=12',
+      biweekly: 'RRULE:FREQ=WEEKLY;INTERVAL=2;COUNT=12',
+      monthly:  'RRULE:FREQ=MONTHLY;COUNT=6',
     };
 
-    if (formData.isRecurring) {
-      const rruleMap: Record<string, string> = {
-        daily: 'RRULE:FREQ=DAILY;COUNT=30',
-        weekly: 'RRULE:FREQ=WEEKLY;COUNT=12',
-        biweekly: 'RRULE:FREQ=WEEKLY;INTERVAL=2;COUNT=12',
-        monthly: 'RRULE:FREQ=MONTHLY;COUNT=6',
-      };
-      event.recurrence = [rruleMap[formData.recurringPattern] || 'RRULE:FREQ=WEEKLY;COUNT=12'];
-    }
+    const res = await fetch('/api/google-meet', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        title:       formData.title,
+        description: formData.description || formData.notes,
+        startTime:   startDateTime.toISOString(),
+        endTime:     endDateTime.toISOString(),
+        timeZone:    Intl.DateTimeFormat().resolvedOptions().timeZone,
+        recurrence:  formData.isRecurring ? rruleMap[formData.recurringPattern] : null,
+      }),
+    });
 
-    const res = await fetch(
-      `https://www.googleapis.com/calendar/v3/calendars/primary/events?conferenceDataVersion=1&key=${GOOGLE_CONFIG.apiKey}`,
-      {
-        method: 'POST',
-        headers: {
-          Authorization: `Bearer ${token}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(event),
-      }
-    );
+    const data = await res.json();
 
     if (!res.ok) {
-      const errData = await res.json();
-      console.error('Google Calendar event error:', errData);
+      console.error('Google Meet API error:', data);
+
+      if (data.error === 'invalid_grant' || data.error === 'auth_required') {
+        toast.error(
+          'Google auth expired. Please contact support to reconnect Google Meet.',
+          { duration: 6000 }
+        );
+      } else {
+        toast.error(data.message || data.error || 'Failed to create Google Meet link.');
+      }
       return null;
     }
 
-    const data = await res.json();
-    const meetLink = data.conferenceData?.entryPoints?.find((ep: any) => ep.entryPointType === 'video')?.uri;
-
     return {
-      meet_link: meetLink || `https://meet.google.com/new`,
-      event_id: data.id,
+      meet_link: data.meet_link || 'https://meet.google.com/new',
+      event_id:  data.event_id  || '',
     };
   } catch (err) {
     console.error('Google Meet creation error:', err);
     return null;
   }
-};
-
-/**
- * Dynamically loads the Google Identity Services script.
- */
-const loadGoogleIdentityServices = (): Promise<void> => {
-  return new Promise((resolve) => {
-    if (typeof window !== 'undefined' && (window as any).google?.accounts) {
-      resolve();
-      return;
-    }
-    const script = document.createElement('script');
-    script.src = 'https://accounts.google.com/gsi/client';
-    script.onload = () => resolve();
-    script.onerror = () => resolve(); // Resolve anyway, fail gracefully
-    document.head.appendChild(script);
-  });
-};
-
-/**
- * Requests a Google OAuth2 access token using the tokenClient popup flow.
- */
-const requestGoogleOAuthToken = (): Promise<string | null> => {
-  return new Promise((resolve) => {
-    try {
-      const google = (window as any).google;
-      if (!google?.accounts?.oauth2) {
-        resolve(null);
-        return;
-      }
-
-      const tokenClient = google.accounts.oauth2.initTokenClient({
-        client_id: '274066752513-xxxxxxxxxxxxxxxxxxxxxxxxxx.apps.googleusercontent.com', // Replace with your OAuth2 client_id
-        scope: 'https://www.googleapis.com/auth/calendar.events',
-        callback: (response: any) => {
-          if (response.error) {
-            resolve(null);
-          } else {
-            resolve(response.access_token);
-          }
-        },
-      });
-      tokenClient.requestAccessToken();
-    } catch (err) {
-      console.error('Google OAuth error:', err);
-      resolve(null);
-    }
-  });
 };
 
 // ==========================================
@@ -1267,7 +1246,7 @@ export default function TutorDashboardPage() {
           </div>
           <div>
             <p className="font-bold" style={{ color: '#073045' }}>Zoom Integration</p>
-            <p className="text-xs text-gray-500">Connected via Server-to-Server OAuth · Account ID: {ZOOM_CONFIG.accountId.slice(0, 8)}...</p>
+            <p className="text-xs text-gray-500">Connected via Server-to-Server OAuth</p>
           </div>
           <CheckCircle className="h-5 w-5 ml-auto flex-shrink-0" style={{ color: '#2D8CFF' }} />
         </div>
@@ -1277,7 +1256,7 @@ export default function TutorDashboardPage() {
           </div>
           <div>
             <p className="font-bold" style={{ color: '#073045' }}>Google Meet Integration</p>
-            <p className="text-xs text-gray-500">Connected via Google Calendar API · Key: {GOOGLE_CONFIG.apiKey.slice(0, 10)}...</p>
+            <p className="text-xs text-gray-500">Connected via Google Calendar API</p>
           </div>
           <CheckCircle className="h-5 w-5 ml-auto flex-shrink-0" style={{ color: '#00897B' }} />
         </div>
